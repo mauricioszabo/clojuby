@@ -36,4 +36,9 @@
 (facts "about Ruby interpretation"
   (fact "calls methods"
     (rb/public-send "to_s" 10) => "10"
-    (rb/public-send "to_s" 10 16) => "a"))
+    (rb/public-send "to_s" 10 16) => "a")
+
+  (fact "creates classes"
+    (let [class (rb/new-class* {"sum_two" (fn [a b] (+ a b))})
+          instance (rb/new class)]
+      (rb/public-send "sum_two" instance 10 20) => 30)))
