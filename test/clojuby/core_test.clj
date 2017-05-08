@@ -39,6 +39,10 @@
     (rb/public-send "to_s" 10 16) => "a")
 
   (fact "creates classes"
-    (let [class (rb/new-class* {"sum_two" (fn [a b] (+ a b))})
+    (let [class (rb/new-class* {"sum_two" (fn [_ a b] (+ a b))})
           instance (rb/new class)]
-      (rb/public-send "sum_two" instance 10 20) => 30)))
+      (rb/public-send "sum_two" instance 10 20) => 30)
+
+    (let [class (rb/new-class* (rb/eval "String") {"append" (fn [self a] (str self "-" a))})
+          instance (rb/new class "some-str")]
+      (rb/public-send "append" instance "foo") => "some-str-foo")))

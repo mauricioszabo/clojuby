@@ -2,9 +2,9 @@
   (:refer-clojure :exclude [eval])
   (:import [org.jruby Ruby RubyFixnum RubyHash RubyFloat RubyArray
             RubySymbol RubyString RubyBoolean RubyNil RubyObject
-            RubyClass RubyProc]
-           [org.jruby.runtime Block Visibility BlockCallback Arity CallBlock19 Block$Type]
-           [org.jruby.internal.runtime.methods ProcMethod]))
+            RubyClass]
+           [org.jruby.runtime Block Visibility Arity]
+           [org.jruby.internal.runtime.methods DynamicMethod]))
 
 (def ^:private runtime (Ruby/getGlobalRuntime))
 (def ^:private context (.getCurrentContext runtime))
@@ -46,7 +46,8 @@
   (rb->clj [this] (case (-> this .getType .toString)
                     "Set" (->> (.callMethod this context "to_a")
                                (map rb->clj)
-                               (into #{}))))
+                               (into #{}))
+                    this))
 
   Object
   (rb->clj [this] this))
@@ -110,25 +111,23 @@
 (defn- arity-of-fn [f]
   (let [m (-> f class .getDeclaredMethods)]
     (if (= 2 (count m))
-      (-> m second .getParameterTypes alength -)
-      (-> m first .getParameterTypes alength))))
+      (-> m second .getParameterTypes alength dec -)
+      (-> m first .getParameterTypes alength dec))))
 
-(defn new-class* [methods]
-  (def m methods)
-  (let [class (RubyClass/newClass runtime ruby-object)]
-    (doseq [[name fun] methods
-            :let [impl (proxy [BlockCallback] []
-                         (call [ctx args block]
-                           (clj->rb (apply fun (map rb->clj args)))))
-                  block (CallBlock19/newCallClosure class
-                                                   (.getSingletonClass class)
-                                                   (Arity/createArity (arity-of-fn fun))
-                                                   impl
-                                                   context)
-                  ruby-proc (RubyProc/newProc runtime block Block$Type/LAMBDA)
-                  method (ProcMethod. class ruby-proc Visibility/PUBLIC)]]
-      (.addMethod class name method))
-    class))
+(defn new-class*
+  ([methods] (new-class* ruby-object methods))
+  ([superclass methods]
+   (let [class (RubyClass/newClass runtime superclass)]
+     (doseq [[name fun] methods
+             :let [arity (arity-of-fn fun)
+                   gen (fn gen [] (proxy [DynamicMethod] []
+                                    (call [context self class name args block]
+                                      (clj->rb (apply fun self (map rb->clj args))))
+                                    (getArity [] (Arity/createArity arity))
+                                    (dup []
+                                      (gen))))]]
+       (.addMethod class name (gen)))
+     class)))
 
 (defn new [class & args]
   (let [arguments (->> args (map clj->rb) (into-array RubyObject))]
