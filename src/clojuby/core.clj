@@ -4,7 +4,7 @@
             RubySymbol RubyString RubyBoolean RubyNil RubyObject
             RubyClass]
            [org.jruby.runtime Block Visibility Arity]
-           [org.jruby.internal.runtime.methods DynamicMethod]))
+           [org.jruby.internal.runtime.methods DynamicMethod CallConfiguration]))
 
 (def ^:private runtime (Ruby/getGlobalRuntime))
 (def ^:private context (.getCurrentContext runtime))
@@ -120,14 +120,21 @@
    (let [class (RubyClass/newClass runtime superclass)]
      (doseq [[name fun] methods
              :let [arity (arity-of-fn fun)
-                   gen (fn gen [] (proxy [DynamicMethod] []
+                   gen (fn gen [] (proxy [DynamicMethod] [class
+                                                          Visibility/PUBLIC
+                                                          CallConfiguration/BACKTRACE_AND_SCOPE
+                                                          name]
                                     (call [context self class name args block]
+                                      (println self)
                                       (clj->rb (apply fun self (map rb->clj args))))
                                     (getArity [] (Arity/createArity arity))
                                     (dup []
                                       (gen))))]]
        (.addMethod class name (gen)))
      class)))
+
+(defmacro method [args & code]
+  `fn ~args ~@code)
 
 (defn new [class & args]
   (let [arguments (->> args (map clj->rb) (into-array RubyObject))]
