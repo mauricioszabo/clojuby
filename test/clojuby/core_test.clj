@@ -53,6 +53,6 @@
     (fact "refers to 'super'"
       (let [class (rb/new-class* (rb/eval "String")
                                  {"upcase" (fn [self]
-                                             (str "-" (rb/eval "super") "-" self))})
+                                             (str "-" (.callSuper self) "-" self))})
             instance (rb/new class "str")]
         (rb/public-send "upcase" instance) => "-STR-str"))))
