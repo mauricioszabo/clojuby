@@ -46,13 +46,13 @@
 
     (fact "calls methods refering to self"
       (let [class (rb/new-class* (rb/eval "String") {"append"
-                                                     (fn [self a] (str self "-" a))})
+                                                     (fn [self a] (str (:self self) "-" a))})
             instance (rb/new class "some-str")]
         (rb/public-send "append" instance "foo") => "some-str-foo"))
 
     (fact "refers to 'super'"
       (let [class (rb/new-class* (rb/eval "String")
                                  {"upcase" (fn [self]
-                                             (str "-" (.callSuper self) "-" self))})
+                                             (str "-" ((:super self)) "-" (:self self)))})
             instance (rb/new class "str")]
         (rb/public-send "upcase" instance) => "-STR-str"))))

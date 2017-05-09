@@ -114,19 +114,28 @@
       (-> m second .getParameterTypes alength dec -)
       (-> m first .getParameterTypes alength dec))))
 
+(defn- define-super-fn [parent-class self name]
+  (fn [ & args]
+    (let [unbound (.instance_method parent-class (RubySymbol/newSymbol runtime name))
+          bound (.bind unbound context self)]
+      (.call bound context (normalize-args args) Block/NULL_BLOCK))))
+
 (defn new-class*
   ([methods] (new-class* ruby-object methods))
   ([superclass methods]
    (let [class (RubyClass/newClass runtime superclass)]
      (doseq [[name fun] methods
              :let [arity (arity-of-fn fun)
+                   bindings (fn [self] {:self self
+                                        :super (define-super-fn superclass self name)})
                    gen (fn gen [] (proxy [DynamicMethod] [class
                                                           Visibility/PUBLIC
                                                           CallConfiguration/BACKTRACE_AND_SCOPE
                                                           name]
                                     (call [context self class name args block]
-                                      (println self)
-                                      (clj->rb (apply fun self (map rb->clj args))))
+                                      (clj->rb (apply fun
+                                                 (bindings self)
+                                                 (map rb->clj args))))
                                     (getArity [] (Arity/createArity arity))
                                     (dup []
                                       (gen))))]]
@@ -139,3 +148,12 @@
 (defn new [class & args]
   (let [arguments (->> args (map clj->rb) (into-array RubyObject))]
     (.newInstance class context arguments Block/NULL_BLOCK)))
+;
+; (def um (.instance_method (raw-eval "String") (clj->rb :upcase)))
+;
+; (.call (.bind um context (raw-eval "\"foo\"")))
+; um
+;
+; (->> (fn foo [a b c]) class bean)
+
+; (with-meta um {:foo "BAR"})
