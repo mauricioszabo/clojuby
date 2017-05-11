@@ -55,4 +55,13 @@
                                  {"upcase" (fn [self]
                                              (str "-" ((:super self)) "-" (:self self)))})
             instance (rb/new class "str")]
-        (rb/public-send "upcase" instance) => "-STR-str"))))
+        (rb/public-send "upcase" instance) => "-STR-str"))
+
+    (fact "defines a constructor and accesses instance variables"
+      (let [class (rb/new-class* (rb/eval "String")
+                                 {"initialize" (fn [self var]
+                                                 (rb/set-variable (:self self) "@var" var))
+                                  "foo" (fn [self]
+                                          (rb/get-variable (:self self) "@var"))})
+            instance (rb/new class :some-var)]
+        (rb/public-send "foo" instance) => :some-var))))

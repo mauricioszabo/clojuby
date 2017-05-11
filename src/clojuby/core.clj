@@ -142,18 +142,12 @@
        (.addMethod class name (gen)))
      class)))
 
-(defmacro method [args & code]
-  `fn ~args ~@code)
+(defn set-variable [self name value]
+  (.setInstanceVariable self name (clj->rb value)))
+
+(defn get-variable [self name]
+  (rb->clj (.getInstanceVariable self name)))
 
 (defn new [class & args]
   (let [arguments (->> args (map clj->rb) (into-array RubyObject))]
     (.newInstance class context arguments Block/NULL_BLOCK)))
-;
-; (def um (.instance_method (raw-eval "String") (clj->rb :upcase)))
-;
-; (.call (.bind um context (raw-eval "\"foo\"")))
-; um
-;
-; (->> (fn foo [a b c]) class bean)
-
-; (with-meta um {:foo "BAR"})
