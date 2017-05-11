@@ -31,12 +31,21 @@
     (rb/eval "require 'set'; [:a, :b].to_set") => #{:a :b}
     (rb/clj->rb {:a 10}) => (rb/raw-eval "{a: 10}")
     (rb/clj->rb [1 2 :a]) => (rb/raw-eval "[1, 2, :a]")
-    (rb/clj->rb #{1 2 :a}) => (rb/raw-eval "Set[1, 2, :a]")))
+    (rb/clj->rb #{1 2 :a}) => (rb/raw-eval "Set[1, 2, :a]"))
+
+  (fact "converts blocks"
+    (let [f1 (rb/eval "proc { |x| x + 2}")
+          f2 (rb/eval "proc { |x, &b| b.call(x) }")]
+      (f1 10) => 12
+      (f2 10 inc) => 11)))
 
 (facts "about Ruby interpretation"
   (fact "calls methods"
     (rb/public-send "to_s" 10) => "10"
     (rb/public-send "to_s" 10 16) => "a")
+
+  (fact "calls methods with blocks"
+    (rb/public-send "map" (rb/eval "1..5") inc) => [2 3 4 5 6])
 
   (facts "about class creation"
     (fact "creates simple class"
