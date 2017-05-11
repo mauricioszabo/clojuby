@@ -1,5 +1,7 @@
 (ns clojuby.core
   (:refer-clojure :exclude [eval])
+  (:require [clojuby.sugar :as sugar]
+            [clojure.walk :as walk])
   (:import [org.jruby Ruby RubyFixnum RubyHash RubyFloat RubyArray
             RubySymbol RubyString RubyBoolean RubyNil RubyObject
             RubyClass]
@@ -105,9 +107,6 @@
 (defn eval [code]
   (-> code raw-eval rb->clj))
 
-(defn ruby [x]
-  (println x "Hello, World!"))
-
 (defn- arity-of-fn [f]
   (let [m (-> f class .getDeclaredMethods)]
     (if (= 2 (count m))
@@ -151,3 +150,7 @@
 (defn new [class & args]
   (let [arguments (->> args (map clj->rb) (into-array RubyObject))]
     (.newInstance class context arguments Block/NULL_BLOCK)))
+
+(defmacro ruby [ & forms]
+  (walk/postwalk #(cond-> % (list? %) sugar/to-ruby-form)
+                 `(do ~@forms)))

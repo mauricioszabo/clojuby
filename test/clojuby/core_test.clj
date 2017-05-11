@@ -65,3 +65,7 @@
                                           (rb/get-variable (:self self) "@var"))})
             instance (rb/new class :some-var)]
         (rb/public-send "foo" instance) => :some-var))))
+
+(facts "with sugared syntax"
+  (fact "calls methods on objects"
+    (rb/ruby (.upcase "foo")) => "FOO"))
