@@ -53,6 +53,10 @@
             instance (rb/new class)]
         (rb/public-send "sum_two" instance 10 20) => 30))
 
+    (fact "inherits class methods"
+      (let [class (rb/new-class* (rb/eval "File") {})]
+        (rb/public-send "exist?" class "foobar.baz") => false))
+
     (fact "calls methods refering to self"
       (let [class (rb/new-class* (rb/eval "String") {"append"
                                                      (fn [self a] (str (:self self) "-" a))})

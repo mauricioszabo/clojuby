@@ -162,7 +162,8 @@
 (defn new-class*
   ([methods] (new-class* ruby-object methods))
   ([superclass methods]
-   (let [class (RubyClass/newClass runtime superclass)]
+   (let [class (doto (RubyClass/newClass runtime superclass)
+                     (.makeMetaClass (.getMetaClass superclass)))]
      (doseq [[name fun] methods
              :let [arity (arity-of-fn fun)
                    bindings (fn [self] {:self self
