@@ -77,4 +77,24 @@
 
 (facts "with sugared syntax"
   (fact "calls methods on objects"
-    (rb/ruby (.upcase "foo")) => "FOO"))
+    (rb/ruby (.upcase "foo")) => "FOO")
+
+  (fact "defines classes"
+    (rb/ruby
+     (defclass SomeClass
+       (defn some-method [a b] (+ a b)))
+     (.some_method (new SomeClass) 1 2))
+    => 3)
+
+  (fact "defines classes subclassing others"
+    (rb/ruby
+     (defclass SomeClass2 'String)
+     (.upcase (new SomeClass2 "foo")))
+    => "FOO")
+
+  (fact "defines classes subclassing others"
+    (rb/ruby
+     (defclass SomeClass3 'String
+       (defn upcase [] (str (super) "-" self)))
+     (.upcase (new SomeClass3 "bar"))
+     => "BAR-bar")))

@@ -16,7 +16,7 @@
   (.evalScriptlet runtime code))
 
 (def ^:private ruby-nil (raw-eval "nil"))
-(def ^:private ruby-object (raw-eval "Object"))
+(def ruby-object (raw-eval "Object"))
 (def ^:private ruby-main (raw-eval "self"))
 
 (defn- arity-of-fn [f]
