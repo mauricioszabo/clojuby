@@ -38,9 +38,11 @@
        (def ~name class#)
        class#)))
 
-(defmethod to-ruby-form :default [[first & forms]]
-  (if (str/starts-with? first ".")
-    (->> forms
-         (cons (-> first (str/replace #"^\." "") normalize-method))
-         (cons 'clojuby.core/public-send))
-    (cons first forms)))
+(defmethod to-ruby-form :default [forms]
+  (if (-> forms first (str/starts-with? "."))
+    (let [[first obj & rest] forms]
+      (->> rest
+           (cons (or (clj-or-rb obj) obj))
+           (cons (-> first (str/replace #"^\." "") normalize-method))
+           (cons 'clojuby.core/public-send)))
+    forms))

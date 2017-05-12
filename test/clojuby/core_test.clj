@@ -77,7 +77,8 @@
 
 (facts "with sugared syntax"
   (fact "calls methods on objects"
-    (rb/ruby (.upcase "foo")) => "FOO")
+    (rb/ruby (.upcase "foo")) => "FOO"
+    (rb/ruby (.to-s 'Class)) => "Class")
 
   (fact "defines classes"
     (rb/ruby
