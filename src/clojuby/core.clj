@@ -198,5 +198,5 @@
     (.newInstance class context arguments Block/NULL_BLOCK)))
 
 (defmacro ruby [ & forms]
-  (walk/postwalk #(cond-> % (list? %) sugar/to-ruby-form)
-                 `(do ~@forms)))
+  (walk/prewalk #(cond-> % (list? %) sugar/to-ruby-form)
+                `(do ~@forms)))
