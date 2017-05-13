@@ -1,6 +1,7 @@
 (ns clojuby.core
-  (:refer-clojure :exclude [eval])
+  (:refer-clojure :exclude [eval require])
   (:require [clojuby.sugar :as sugar]
+            [clojure.string :as str]
             [clojure.walk :as walk])
   (:import [org.jruby Ruby RubyFixnum RubyHash RubyFloat RubyArray
             RubySymbol RubyString RubyBoolean RubyNil RubyObject
@@ -152,6 +153,10 @@
 
 (defn eval [code]
   (-> code raw-eval rb->clj))
+
+(defn require [string]
+  (let [norm (str/replace string #"\"" "\"\"")]
+    (eval (str "require \"" norm "\""))))
 
 (defn- define-super-fn [parent-class self name]
   (fn [ & args]

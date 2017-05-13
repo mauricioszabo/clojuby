@@ -28,7 +28,8 @@
     (rb/eval "[:a]") => [:a]
     (rb/eval "[:a, :b]") => [:a :b]
     (rb/eval "[1, 2, :a]") => [1 2 :a]
-    (rb/eval "require 'set'; [:a, :b].to_set") => #{:a :b}
+    (rb/require "set")
+    (rb/eval "[:a, :b].to_set") => #{:a :b}
     (rb/clj->rb {:a 10}) => (rb/raw-eval "{a: 10}")
     (rb/clj->rb [1 2 :a]) => (rb/raw-eval "[1, 2, :a]")
     (rb/clj->rb #{1 2 :a}) => (rb/raw-eval "Set[1, 2, :a]"))
