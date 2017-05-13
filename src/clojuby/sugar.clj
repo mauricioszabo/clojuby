@@ -5,7 +5,7 @@
 (defn- clj-or-rb [symbol]
   (cond
     (and (seq? symbol) (-> symbol first (= 'quote)))
-    `(clojuby.core/raw-eval (str (quote ~(second symbol))))
+    `(clojuby.core/raw-eval (str/replace (quote ~(second symbol)) #"\." "::"))
 
     (symbol? symbol)
     symbol))
@@ -41,8 +41,8 @@
 (defmethod to-ruby-form :default [forms]
   (if (-> forms first (str/starts-with? "."))
     (let [[first obj & rest] forms]
-      (->> rest
-           (cons (or (clj-or-rb obj) obj))
-           (cons (-> first (str/replace #"^\." "") normalize-method))
-           (cons 'clojuby.core/public-send)))
+      (cond->> rest
+               :always (cons (-> first (str/replace #"^\." "") normalize-method))
+               obj (cons (or (clj-or-rb obj) obj))
+               :always (cons 'clojuby.core/public-send)))
     forms))

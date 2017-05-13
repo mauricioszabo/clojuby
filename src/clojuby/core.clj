@@ -144,7 +144,7 @@
   Object
   (clj->rb [this] (JavaObject/wrap runtime this)))
 
-(defn public-send [method obj & args]
+(defn public-send [obj method & args]
   (let [[args block] (normalize-block args)]
     (-> obj
         clj->rb
