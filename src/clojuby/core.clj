@@ -1,5 +1,5 @@
 (ns clojuby.core
-  (:refer-clojure :exclude [eval require])
+  (:refer-clojure :exclude [eval])
   (:require [clojuby.sugar :as sugar]
             [clojure.string :as str]
             [clojure.walk :as walk])
@@ -17,6 +17,7 @@
   (.evalScriptlet runtime code))
 
 (def ^:private ruby-nil (raw-eval "nil"))
+(def ^:private ruby-class (raw-eval "Class"))
 (def ruby-object (raw-eval "Object"))
 (def ^:private ruby-main (raw-eval "self"))
 
@@ -144,7 +145,7 @@
   Object
   (clj->rb [this] (JavaObject/wrap runtime this)))
 
-(defn public-send [obj method & args]
+(defn public-send [method obj & args]
   (let [[args block] (normalize-block args)]
     (-> obj
         clj->rb
@@ -154,7 +155,7 @@
 (defn eval [code]
   (-> code raw-eval rb->clj))
 
-(defn require [string]
+(defn rb-require [string]
   (let [norm (str/replace string #"\"" "\"\"")]
     (eval (str "require \"" norm "\""))))
 
@@ -167,8 +168,7 @@
 (defn new-class*
   ([methods] (new-class* ruby-object methods))
   ([superclass methods]
-   (let [class (doto (RubyClass/newClass runtime superclass)
-                     (.makeMetaClass (.getMetaClass superclass)))]
+   (let [class (public-send "new" ruby-class superclass)]
      (doseq [[name fun] methods
              :let [arity (arity-of-fn fun)
                    bindings (fn [self] {:self self
@@ -198,5 +198,8 @@
     (.newInstance class context arguments Block/NULL_BLOCK)))
 
 (defmacro ruby [ & forms]
-  (walk/prewalk #(cond-> % (list? %) sugar/to-ruby-form)
+  (walk/prewalk sugar/to-ruby-form
                 `(do ~@forms)))
+
+(defmacro rb [obj]
+  `(raw-eval ~(str obj)))
