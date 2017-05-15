@@ -28,7 +28,7 @@
     (rb/eval "[:a]") => [:a]
     (rb/eval "[:a, :b]") => [:a :b]
     (rb/eval "[1, 2, :a]") => [1 2 :a]
-    (rb/require "set")
+    (rb/rb-require "set")
     (rb/eval "[:a, :b].to_set") => #{:a :b}
     (rb/clj->rb {:a 10}) => (rb/raw-eval "{a: 10}")
     (rb/clj->rb [1 2 :a]) => (rb/raw-eval "[1, 2, :a]")
@@ -42,34 +42,34 @@
 
 (facts "about Ruby interpretation"
   (fact "calls methods"
-    (rb/public-send 10 "to_s") => "10"
-    (rb/public-send 10 "to_s" 16) => "a")
+    (rb/public-send "to_s" 10) => "10"
+    (rb/public-send "to_s" 10 16) => "a")
 
   (fact "calls methods with blocks"
-    (rb/public-send (rb/eval "1..5") "map" inc) => [2 3 4 5 6])
+    (rb/public-send "map" (rb/eval "1..5") inc) => [2 3 4 5 6])
 
   (facts "about class creation"
     (fact "creates simple class"
       (let [class (rb/new-class* {"sum_two" (fn [_ a b] (+ a b))})
             instance (rb/new class)]
-        (rb/public-send instance "sum_two" 10 20) => 30))
+        (rb/public-send "sum_two" instance 10 20) => 30))
 
     (fact "inherits class methods"
       (let [class (rb/new-class* (rb/eval "File") {})]
-        (rb/public-send class "exist?" "foobar.baz") => false))
+        (rb/public-send "exist?" class "foobar.baz") => false))
 
     (fact "calls methods refering to self"
       (let [class (rb/new-class* (rb/eval "String") {"append"
                                                      (fn [self a] (str (:self self) "-" a))})
             instance (rb/new class "some-str")]
-        (rb/public-send instance "append" "foo") => "some-str-foo"))
+        (rb/public-send "append" instance "foo") => "some-str-foo"))
 
     (fact "refers to 'super'"
       (let [class (rb/new-class* (rb/eval "String")
                                  {"upcase" (fn [self]
                                              (str "-" ((:super self)) "-" (:self self)))})
             instance (rb/new class "str")]
-        (rb/public-send instance "upcase") => "-STR-str"))
+        (rb/public-send "upcase" instance) => "-STR-str"))
 
     (fact "defines a constructor and accesses instance variables"
       (let [class (rb/new-class* (rb/eval "String")
@@ -78,12 +78,13 @@
                                   "foo" (fn [self]
                                           (rb/get-variable (:self self) "@var"))})
             instance (rb/new class :some-var)]
-        (rb/public-send instance "foo") => :some-var))))
+        (rb/public-send "foo" instance) => :some-var))))
 
+(macroexpand-1 '(rb/ruby (.upcase "foo")))
 (facts "with sugared syntax"
   (fact "calls methods on objects"
     (rb/ruby (.upcase "foo")) => "FOO"
-    (rb/ruby (.to-s 'Class)) => "Class")
+    (rb/ruby (.to-s (rb/rb Class))) => "Class")
 
   (fact "defines classes"
     (rb/ruby
@@ -106,9 +107,10 @@
      => "BAR-bar"))
 
   (fact "plays nice with doto"
-    (let [s (rb/raw-eval "\"FOO\"")]
+    (let [glob (atom 0)]
       (rb/ruby
-        (doto s
-              (.upcase!)
-              (.succ!))))
-    => (rb/raw-eval "\"FOP\"")))
+       (doto (defclass DotoExample
+               (defn upd [a] (swap! glob + a)))
+             (.upd 10)
+             (.upd 2)))
+      @glob => 12)))
