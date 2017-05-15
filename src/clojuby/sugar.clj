@@ -12,7 +12,7 @@
 
 (defn- normalize-method [name]
   (-> name
-      (str/replace-first #"^." "")
+      (str/replace-first #"^\." "")
       (str/replace #"\-" "_")))
 
 (defn as-class-body [body]
@@ -26,10 +26,7 @@
                                  `(fn ~name ~(->> params (cons 'self) vec) ~@body)))]
     (reduce separate-code {} body)))
 
-(defmulti to-ruby-form identity)
-
-(defmethod to-ruby-form 'new [_]
-  'clojuby.core/new)
+(defmulti to-ruby-form #(and (list? %) (first %)))
 
 (defmethod to-ruby-form 'defclass [[_ name & rest]]
   (let [[sub rest] (if-let [sub (-> rest first clj-or-rb)]
@@ -41,7 +38,14 @@
        class#)))
 
 (defmethod to-ruby-form :default [form]
-  (if (and (symbol? form) (str/starts-with? form "."))
+  form)
+
+(defn to-ruby-sym [sym]
+  (cond
+    (= sym 'new) 'clojuby.core/new
+
+    (and (symbol? sym) (str/starts-with? sym "."))
     `(partial ~'clojuby.core/public-send
-              ~(normalize-method form))
-    form))
+              ~(normalize-method sym))
+
+    :else sym))

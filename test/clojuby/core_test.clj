@@ -81,6 +81,11 @@
         (rb/public-send "foo" instance) => :some-var))))
 
 (macroexpand-1 '(rb/ruby (.upcase "foo")))
+(macroexpand-1 '
+               (rb/ruby
+                (defclass SomeClass
+                  (defn some-method [a b] (+ a b)))
+                (.some_method (new SomeClass) 1 2)))
 (facts "with sugared syntax"
   (fact "calls methods on objects"
     (rb/ruby (.upcase "foo")) => "FOO"
@@ -109,8 +114,8 @@
   (fact "plays nice with doto"
     (let [glob (atom 0)]
       (rb/ruby
-       (doto (defclass DotoExample
-               (defn upd [a] (swap! glob + a)))
+       (doto (new (defclass DotoExample
+                    (defn upd [a] (swap! glob + a))))
              (.upd 10)
              (.upd 2)))
       @glob => 12)))
