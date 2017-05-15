@@ -1,9 +1,13 @@
 (ns clojuby.core
   (:refer-clojure :exclude [eval])
+  (:require [clojuby.sugar :as sugar]
+            [clojure.walk :as walk])
   (:import [org.jruby Ruby RubyFixnum RubyHash RubyFloat RubyArray
             RubySymbol RubyString RubyBoolean RubyNil RubyObject
-            RubyClass]
-           [org.jruby.runtime Block Visibility Arity]
+            RubyClass RubyProc]
+           [org.jruby.javasupport JavaObject]
+           [org.jruby.runtime Block Visibility Arity CallBlock BlockCallback]
+           [org.jruby.runtime.builtin IRubyObject]
            [org.jruby.internal.runtime.methods DynamicMethod CallConfiguration]))
 
 (def ^:private runtime (Ruby/getGlobalRuntime))
@@ -12,9 +16,28 @@
   (.evalScriptlet runtime code))
 
 (def ^:private ruby-nil (raw-eval "nil"))
-(def ^:private ruby-object (raw-eval "Object"))
+(def ruby-object (raw-eval "Object"))
+(def ^:private ruby-main (raw-eval "self"))
+
+(defn- arity-of-fn [f]
+  (let [methods (-> f class .getDeclaredMethods)]
+    (if (some #(= "getRequiredArity" (.getName %)) methods)
+      (-> f .getRequiredArity inc -)
+      (->> methods (filter #(= "invoke" (.getName %)))
+           first .getParameterTypes alength))))
 
 (defprotocol CljRubyObject (rb->clj [this]))
+(defprotocol RubyCljObject (clj->rb [this]))
+
+(defn- normalize-args [args]
+  (->> args (map clj->rb) (into-array RubyObject)))
+
+(defn- normalize-block [args]
+  (let [possible-block (last args)]
+    (if (fn? possible-block)
+      [(vec (butlast args)) (clj->rb possible-block)]
+      [args Block/NULL_BLOCK])))
+
 (extend-protocol CljRubyObject
   RubyFixnum
   (rb->clj [this] (.getLongValue this))
@@ -39,6 +62,12 @@
   RubyBoolean
   (rb->clj [this] (.isTrue this))
 
+  RubyProc
+  (rb->clj [this]
+    (fn [ & args]
+      (let [[args block] (normalize-block args)]
+        (rb->clj (.call this context (normalize-args args) block)))))
+
   RubyNil
   (rb->clj [_] nil)
 
@@ -49,10 +78,12 @@
                                (into #{}))
                     this))
 
+  IRubyObject
+  (rb->clj [this] this)
+
   Object
   (rb->clj [this] this))
 
-(defprotocol RubyCljObject (clj->rb [this]))
 (extend-protocol RubyCljObject
   java.lang.Long
   (clj->rb [this] (RubyFixnum. runtime this))
@@ -90,29 +121,37 @@
                                       context
                                       "to_set"))))
 
-  Object
-  (clj->rb [this] this))
+  clojure.lang.Fn
+  (clj->rb [me]
+    (let [callback (proxy [BlockCallback] []
+                     (call [context args block]
+                       (let [args (cond-> (mapv rb->clj args)
 
-(defn- normalize-args [args]
-  (->> args (map clj->rb) (into-array RubyObject)))
+                                          (not= block Block/NULL_BLOCK)
+                                          (conj block))]
+                         (clj->rb (apply me args)))))]
+
+      (CallBlock/newCallClosure ruby-main
+                                ruby-object
+                                (Arity/createArity (arity-of-fn me))
+                                callback
+                                context)))
+
+  IRubyObject
+  (clj->rb [this] this)
+
+  Object
+  (clj->rb [this] (JavaObject/wrap runtime this)))
 
 (defn public-send [method obj & args]
-  (-> obj
-      clj->rb
-      (.callMethod context method (normalize-args args) Block/NULL_BLOCK)
-      rb->clj))
+  (let [[args block] (normalize-block args)]
+    (-> obj
+        clj->rb
+        (.callMethod context method (normalize-args args) block)
+        rb->clj)))
 
 (defn eval [code]
   (-> code raw-eval rb->clj))
-
-(defn ruby [x]
-  (println x "Hello, World!"))
-
-(defn- arity-of-fn [f]
-  (let [m (-> f class .getDeclaredMethods)]
-    (if (= 2 (count m))
-      (-> m second .getParameterTypes alength dec -)
-      (-> m first .getParameterTypes alength dec))))
 
 (defn- define-super-fn [parent-class self name]
   (fn [ & args]
@@ -123,7 +162,8 @@
 (defn new-class*
   ([methods] (new-class* ruby-object methods))
   ([superclass methods]
-   (let [class (RubyClass/newClass runtime superclass)]
+   (let [class (doto (RubyClass/newClass runtime superclass)
+                     (.makeMetaClass (.getMetaClass superclass)))]
      (doseq [[name fun] methods
              :let [arity (arity-of-fn fun)
                    bindings (fn [self] {:self self
@@ -142,18 +182,16 @@
        (.addMethod class name (gen)))
      class)))
 
-(defmacro method [args & code]
-  `fn ~args ~@code)
+(defn set-variable [self name value]
+  (.setInstanceVariable self name (clj->rb value)))
+
+(defn get-variable [self name]
+  (rb->clj (.getInstanceVariable self name)))
 
 (defn new [class & args]
   (let [arguments (->> args (map clj->rb) (into-array RubyObject))]
     (.newInstance class context arguments Block/NULL_BLOCK)))
-;
-; (def um (.instance_method (raw-eval "String") (clj->rb :upcase)))
-;
-; (.call (.bind um context (raw-eval "\"foo\"")))
-; um
-;
-; (->> (fn foo [a b c]) class bean)
 
-; (with-meta um {:foo "BAR"})
+(defmacro ruby [ & forms]
+  (walk/postwalk #(cond-> % (list? %) sugar/to-ruby-form)
+                 `(do ~@forms)))
