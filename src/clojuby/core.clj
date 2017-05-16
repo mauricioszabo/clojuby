@@ -128,9 +128,9 @@
     (let [callback (proxy [BlockCallback] []
                      (call [context args block]
                        (let [args (cond-> (mapv rb->clj args)
-                                          (not= block Block/NULL_BLOCK) (conj block))
-                             bind (:bindings (meta me))]
-                         (println bind)
+                                          (not= block Block/NULL_BLOCK) (conj block))]
+                         (when-let [bind (:binding (meta me))]
+                           (reset! bind (.getSelf (.currentBinding context))))
                          (clj->rb (apply me args)))))]
 
       (CallBlock/newCallClosure ruby-main
@@ -145,14 +145,6 @@
   Object
   (clj->rb [this] (JavaObject/wrap runtime this)))
 
-; (public-send "name"
-;  (public-send "class"
-;               (first (into [] (.getValues (.getDynamicScope c))))))
-;
-; (public-send "params" c)
-; p
-; (into [] (.getAllNamesInScope (.getDynamicScope c)))
-; (public-send "params" (.getSelf c))
 (defn public-send [method obj & args]
   (let [[args block] (normalize-block args)]
     (-> obj
