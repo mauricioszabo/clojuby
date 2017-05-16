@@ -48,4 +48,7 @@
     `(partial ~'clojuby.core/public-send
               ~(normalize-method sym))
 
+    (and (symbol? sym) (str/starts-with? sym "self."))
+    2
+
     :else sym))

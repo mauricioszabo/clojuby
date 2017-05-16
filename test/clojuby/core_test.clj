@@ -105,6 +105,13 @@
      (.upcase (new SomeClass3 "bar"))
      => "BAR-bar"))
 
+  (fact "understands bindings"
+    (rb/ruby
+     (defclass SomeClass4
+       (defn x [] 10))
+     (.instance-exec (new SomeClass4) 2 (fn [two] (+ two self.x))))
+    => 12)
+
   (fact "plays nice with doto"
     (let [glob (atom 0)]
       (rb/ruby
