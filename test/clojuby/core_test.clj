@@ -28,7 +28,8 @@
     (rb/eval "[:a]") => [:a]
     (rb/eval "[:a, :b]") => [:a :b]
     (rb/eval "[1, 2, :a]") => [1 2 :a]
-    (rb/eval "require 'set'; [:a, :b].to_set") => #{:a :b}
+    (rb/rb-require "set")
+    (rb/eval "[:a, :b].to_set") => #{:a :b}
     (rb/clj->rb {:a 10}) => (rb/raw-eval "{a: 10}")
     (rb/clj->rb [1 2 :a]) => (rb/raw-eval "[1, 2, :a]")
     (rb/clj->rb #{1 2 :a}) => (rb/raw-eval "Set[1, 2, :a]"))
@@ -79,10 +80,16 @@
             instance (rb/new class :some-var)]
         (rb/public-send "foo" instance) => :some-var))))
 
+(macroexpand-1 '(rb/ruby (.upcase "foo")))
+(macroexpand-1 '
+               (rb/ruby
+                (defclass SomeClass
+                  (defn some-method [a b] (+ a b)))
+                (.some_method (new SomeClass) 1 2)))
 (facts "with sugared syntax"
   (fact "calls methods on objects"
     (rb/ruby (.upcase "foo")) => "FOO"
-    (rb/ruby (.to-s 'Class)) => "Class")
+    (rb/ruby (.to-s (rb/rb Class))) => "Class")
 
   (fact "defines classes"
     (rb/ruby
@@ -102,4 +109,13 @@
      (defclass SomeClass3 'String
        (defn upcase [] (str (super) "-" self)))
      (.upcase (new SomeClass3 "bar"))
-     => "BAR-bar")))
+     => "BAR-bar"))
+
+  (fact "plays nice with doto"
+    (let [glob (atom 0)]
+      (rb/ruby
+       (doto (new (defclass DotoExample
+                    (defn upd [a] (swap! glob + a))))
+             (.upd 10)
+             (.upd 2)))
+      @glob => 12)))
