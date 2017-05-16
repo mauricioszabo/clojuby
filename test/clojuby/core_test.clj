@@ -80,12 +80,6 @@
             instance (rb/new class :some-var)]
         (rb/public-send "foo" instance) => :some-var))))
 
-(macroexpand-1 '(rb/ruby (.upcase "foo")))
-(macroexpand-1 '
-               (rb/ruby
-                (defclass SomeClass
-                  (defn some-method [a b] (+ a b)))
-                (.some_method (new SomeClass) 1 2)))
 (facts "with sugared syntax"
   (fact "calls methods on objects"
     (rb/ruby (.upcase "foo")) => "FOO"
