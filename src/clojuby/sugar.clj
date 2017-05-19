@@ -35,7 +35,14 @@
     `(let [body# ~(as-class-body rest)
            class# (clojuby.core/new-class* ~sub body#)]
        (def ~name class#)
+       (clojuby.core/public-send "const_set" clojuby.core/ruby-object
+                                 ~(keyword name) class#)
        class#)))
+
+(defmethod to-ruby-form 'fn [[_ & form]]
+  `(with-meta (fn [~'self]
+                (with-meta (fn ~@form) {:dont-convert? true}))
+     {:binding true}))
 
 (defmethod to-ruby-form :default [form]
   form)

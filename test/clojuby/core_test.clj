@@ -105,6 +105,11 @@
      (.upcase (new SomeClass3 "bar"))
      => "BAR-bar"))
 
+  (fact "understands bindings"
+    (rb/ruby (defclass SomeClass4 (defn x [] 10)))
+    (rb/ruby (.instance-exec (new SomeClass4) 2 (fn [two] (+ two (.x self))))) => 12)
+  (macroexpand-1 '(rb/ruby (.instance-exec (new SomeClass4) 2 (fn [two] (+ two (.x self))))))
+
   (fact "plays nice with doto"
     (let [glob (atom 0)]
       (rb/ruby
@@ -112,4 +117,8 @@
                     (defn upd [a] (swap! glob + a))))
              (.upd 10)
              (.upd 2)))
-      @glob => 12)))
+      @glob => 12))
+
+  (fact "plays nice with other macros"
+    (rb/ruby
+     (-> "some-string" .upcase .chop)) => "SOME-STRIN"))
