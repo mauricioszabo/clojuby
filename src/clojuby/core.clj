@@ -20,6 +20,13 @@
 (def ^:private ruby-class (raw-eval "Class"))
 (def ruby-object (raw-eval "Object"))
 (def ^:private ruby-main (raw-eval "self"))
+(def ^:private ruby-proc-wrapper
+  (raw-eval "proc { |fn|
+               proc { |*args, &b|
+                 args << b if b
+                 fn.invoke(self).invoke(*args)
+               }
+             }"))
 
 (defn- arity-of-fn [f]
   (let [methods (-> f class .getDeclaredMethods)]
@@ -39,6 +46,18 @@
     (if (fn? possible-block)
       [(vec (butlast args)) (clj->rb possible-block)]
       [args Block/NULL_BLOCK])))
+
+(defn public-send [method obj & args]
+  (println "\n" args)
+  (let [[args block] (normalize-block args)]
+    (println method obj)
+    (println (clj->rb obj))
+    (println args)
+    (-> obj
+        clj->rb
+        (.callMethod context method (normalize-args args) block)
+        rb->clj)))
+
 
 (extend-protocol CljRubyObject
   RubyFixnum
@@ -86,6 +105,19 @@
   Object
   (rb->clj [this] this))
 
+(defn- generate-proc-from-fn [me]
+  (let [callback (proxy [BlockCallback] []
+                    (call [context args block]
+                      (let [args (cond-> (mapv rb->clj args)
+                                         (not= block Block/NULL_BLOCK) (conj block))]
+                        (clj->rb (apply me args)))))]
+
+    (CallBlock/newCallClosure ruby-main
+                              ruby-object
+                              (Arity/createArity (arity-of-fn me))
+                              callback
+                              context)))
+
 (extend-protocol RubyCljObject
   java.lang.Long
   (clj->rb [this] (RubyFixnum. runtime this))
@@ -125,32 +157,22 @@
 
   clojure.lang.Fn
   (clj->rb [me]
-    (let [callback (proxy [BlockCallback] []
-                     (call [context args block]
-                       (let [args (cond-> (mapv rb->clj args)
-                                          (not= block Block/NULL_BLOCK) (conj block))]
-                         (when-let [bind (:binding (meta me))]
-                           (reset! bind (.getSelf (.currentBinding context))))
-                         (clj->rb (apply me args)))))]
+    (cond
+      (-> me meta :binding) (.getBlock
+                             (.callMethod ruby-proc-wrapper
+                                          context
+                                          "call"
+                                          (into-array RubyObject [(JavaObject/wrap runtime me)])
+                                          Block/NULL_BLOCK))
+      (-> me meta :dont-convert?) me
+      :else (generate-proc-from-fn me)))
 
-      (CallBlock/newCallClosure ruby-main
-                                ruby-object
-                                (Arity/createArity (arity-of-fn me))
-                                callback
-                                context)))
 
   IRubyObject
   (clj->rb [this] this)
 
   Object
   (clj->rb [this] (JavaObject/wrap runtime this)))
-
-(defn public-send [method obj & args]
-  (let [[args block] (normalize-block args)]
-    (-> obj
-        clj->rb
-        (.callMethod context method (normalize-args args) block)
-        rb->clj)))
 
 (defn eval [code]
   (-> code raw-eval rb->clj))
