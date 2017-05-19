@@ -117,4 +117,8 @@
                     (defn upd [a] (swap! glob + a))))
              (.upd 10)
              (.upd 2)))
-      @glob => 12)))
+      @glob => 12))
+
+  (fact "plays nice with other macros"
+    (rb/ruby
+     (-> "some-string" .upcase .chop)) => "SOME-STRIN"))

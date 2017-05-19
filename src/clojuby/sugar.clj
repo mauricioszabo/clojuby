@@ -41,7 +41,7 @@
 
 (defmethod to-ruby-form 'fn [[_ & form]]
   `(with-meta (fn [~'self]
-                (with-meta (fn ~@form) {:dont-convert? true})) 
+                (with-meta (fn ~@form) {:dont-convert? true}))
      {:binding true}))
 
 (defmethod to-ruby-form :default [form]
@@ -54,10 +54,5 @@
     (and (symbol? sym) (str/starts-with? sym "."))
     `(partial ~'clojuby.core/public-send
               ~(normalize-method sym))
-
-    ; (and (symbol? sym) (str/starts-with? sym "-binding."))
-    ; (list 'clojuby.core/public-send
-    ;       (normalize-method (str/replace-first sym "-binding." ""))
-    ;       '@-binding)
 
     :else sym))

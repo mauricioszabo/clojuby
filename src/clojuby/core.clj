@@ -6,7 +6,7 @@
   (:import [org.jruby Ruby RubyFixnum RubyHash RubyFloat RubyArray
             RubySymbol RubyString RubyBoolean RubyNil RubyObject
             RubyClass RubyProc]
-           [org.jruby.javasupport JavaObject]
+           [org.jruby.javasupport JavaUtil]
            [org.jruby.runtime Block Visibility Arity CallBlock BlockCallback]
            [org.jruby.runtime.builtin IRubyObject]
            [org.jruby.internal.runtime.methods DynamicMethod CallConfiguration]))
@@ -48,11 +48,7 @@
       [args Block/NULL_BLOCK])))
 
 (defn public-send [method obj & args]
-  (println "\n" args)
   (let [[args block] (normalize-block args)]
-    (println method obj)
-    (println (clj->rb obj))
-    (println args)
     (-> obj
         clj->rb
         (.callMethod context method (normalize-args args) block)
@@ -159,11 +155,13 @@
   (clj->rb [me]
     (cond
       (-> me meta :binding) (.getBlock
-                             (.callMethod ruby-proc-wrapper
-                                          context
-                                          "call"
-                                          (into-array RubyObject [(JavaObject/wrap runtime me)])
-                                          Block/NULL_BLOCK))
+                             (.callMethod
+                              ruby-proc-wrapper
+                              context
+                              "call"
+                              (into-array RubyObject [(JavaUtil/convertJavaToUsableRubyObject runtime me)])
+                              Block/NULL_BLOCK))
+
       (-> me meta :dont-convert?) me
       :else (generate-proc-from-fn me)))
 
@@ -172,7 +170,7 @@
   (clj->rb [this] this)
 
   Object
-  (clj->rb [this] (JavaObject/wrap runtime this)))
+  (clj->rb [this] (JavaUtil/convertJavaToUsableRubyObject runtime this)))
 
 (defn eval [code]
   (-> code raw-eval rb->clj))
