@@ -1,19 +1,16 @@
 (ns clojuby.sugar
   (:require [clojure.string :as str]
-            [clojure.walk :as walk]))
-
-(defn- clj-or-rb [symbol]
-  (cond
-    (and (seq? symbol) (-> symbol first (= 'quote)))
-    `(clojuby.core/raw-eval (str/replace (quote ~(second symbol)) #"\." "::"))
-
-    (symbol? symbol)
-    symbol))
+            [clojure.walk :as walk])
+  (:import [org.jruby.runtime.builtin IRubyObject]))
 
 (defn- normalize-method [name]
   (-> name
       (str/replace-first #"^\." "")
       (str/replace #"\-" "_")))
+
+(defn- clj-or-rb [symbol]
+  (when (or (symbol? symbol) (instance? IRubyObject symbol))
+    symbol))
 
 (defn as-class-body [body]
   (let [norm-body (fn [sym] (cond
@@ -28,10 +25,14 @@
 
 (defmulti to-ruby-form #(and (list? %) (first %)))
 
+(defn- separate-superclass [forms]
+  (let [[head & rest] forms]
+    (if (= (list? head) (= (first head) 'defn))
+      ['clojuby.core/ruby-object forms]
+      [head rest])))
+
 (defmethod to-ruby-form 'defclass [[_ name & rest]]
-  (let [[sub rest] (if-let [sub (-> rest first clj-or-rb)]
-                     [sub (drop 1 rest)]
-                     ['clojuby.core/ruby-object rest])]
+  (let [[sub rest] (separate-superclass rest)]
     `(let [body# ~(as-class-body rest)
            class# (clojuby.core/new-class* ~sub body#)]
        (def ~name class#)

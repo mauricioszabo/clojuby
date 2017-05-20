@@ -193,14 +193,20 @@
              :let [arity (arity-of-fn fun)
                    bindings (fn [self] {:self self
                                         :super (define-super-fn superclass self name)})
+                   call-fn (fn [context self class name args block]
+                             (clj->rb (apply fun
+                                        (bindings self)
+                                        (map rb->clj args))))
+
                    gen (fn gen [] (proxy [DynamicMethod] [class
                                                           Visibility/PUBLIC
                                                           CallConfiguration/BACKTRACE_AND_SCOPE
                                                           name]
-                                    (call [context self class name args block]
-                                      (clj->rb (apply fun
-                                                 (bindings self)
-                                                 (map rb->clj args))))
+                                    (call
+                                     ([context self class name]
+                                      (call-fn context self class name [] Block/NULL_BLOCK))
+                                     ([context self class name args block]
+                                      (call-fn context self class name args block)))
                                     (getArity [] (Arity/createArity arity))
                                     (dup []
                                       (gen))))]]
@@ -223,6 +229,10 @@
 (defmacro rb [obj]
   `(raw-eval ~(str/replace obj "." "::")))
 
+(defmethod print-method IRubyObject [this ^java.io.Writer w]
+  (.write w (public-send "inspect" this)))
+
+; -- Helper macros for readers --
 (defn as-ruby-obj [form]
   `(rb ~form))
 
