@@ -221,4 +221,10 @@
   (sugar/sugarify forms))
 
 (defmacro rb [obj]
-  `(raw-eval ~(str obj)))
+  `(raw-eval ~(str/replace obj "." "::")))
+
+(defn as-ruby-obj [form]
+  `(rb ~form))
+
+(defn eval-ruby [form]
+  `(ruby ~form))
