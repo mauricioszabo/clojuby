@@ -1,6 +1,6 @@
-(ns sinatra (:require [clojuby.core :refer [ruby] :as rb]))
+(ns sinatra (:require [clojuby.core :refer [rb rb-require ruby] :as rb])))
 
-(rb/rb-require "sinatra")
+(rb-require "sinatra")
 (ruby
  (doto (defclass App 'Sinatra.Base)
        (.get "/" (fn [] "Hello, world!"))
