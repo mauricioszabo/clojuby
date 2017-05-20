@@ -5,6 +5,6 @@
  (doto (defclass App 'Sinatra.Base)
        (.get "/" (fn [] "Hello, world!"))
        (.get "/params" (fn [ & params]
-                         (str "Hello, " (get (.params self) "name"))))
+                         (str "Hello, " (-> self .params (get "name")))))
 
        (.run!)))

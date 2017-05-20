@@ -185,26 +185,36 @@
           bound (.bind unbound context self)]
       (.call bound context (normalize-args args) Block/NULL_BLOCK))))
 
-(defn new-class*
-  ([methods] (new-class* ruby-object methods))
+(defn new-class
+  ([methods] (new-class ruby-object methods))
   ([superclass methods]
    (let [class (public-send "new" ruby-class superclass)]
      (doseq [[name fun] methods
-             :let [arity (arity-of-fn fun)
+             :let [method-name (str/replace-first name "self." "")
+                   receiving-class (if (str/starts-with? name "self.")
+                                     (.getMetaClass class)
+                                     class)
                    bindings (fn [self] {:self self
                                         :super (define-super-fn superclass self name)})
+                   call-fn (fn [context self class name args block]
+                             (clj->rb (apply fun
+                                        (bindings self)
+                                        (map rb->clj args))))
+
+                   arity (arity-of-fn fun)
                    gen (fn gen [] (proxy [DynamicMethod] [class
                                                           Visibility/PUBLIC
                                                           CallConfiguration/BACKTRACE_AND_SCOPE
                                                           name]
-                                    (call [context self class name args block]
-                                      (clj->rb (apply fun
-                                                 (bindings self)
-                                                 (map rb->clj args))))
+                                    (call
+                                     ([context self class name]
+                                      (call-fn context self class name [] Block/NULL_BLOCK))
+                                     ([context self class name args block]
+                                      (call-fn context self class name args block)))
                                     (getArity [] (Arity/createArity arity))
                                     (dup []
                                       (gen))))]]
-       (.addMethod class name (gen)))
+       (.addMethod receiving-class method-name (gen)))
      class)))
 
 (defn set-variable [self name value]
@@ -218,10 +228,17 @@
     (.newInstance class context arguments Block/NULL_BLOCK)))
 
 (defmacro ruby [ & forms]
-  (->> forms
-       (cons `do)
-       (walk/postwalk sugar/to-ruby-sym)
-       (walk/prewalk sugar/to-ruby-form)))
+  (sugar/sugarify forms))
 
 (defmacro rb [obj]
-  `(raw-eval ~(str obj)))
+  `(raw-eval ~(str/replace obj "." "::")))
+
+(defmethod print-method IRubyObject [this ^java.io.Writer w]
+  (.write w (public-send "inspect" this)))
+
+; -- Helper macros for readers --
+(defn as-ruby-obj [form]
+  `(rb ~form))
+
+(defn eval-ruby [form]
+  `(ruby ~form))
