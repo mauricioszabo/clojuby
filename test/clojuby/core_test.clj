@@ -50,33 +50,37 @@
 
   (facts "about class creation"
     (fact "creates simple class"
-      (let [class (rb/new-class* {"sum_two" (fn [_ a b] (+ a b))})
+      (let [class (rb/new-class {"sum_two" (fn [_ a b] (+ a b))})
             instance (rb/new class)]
         (rb/public-send "sum_two" instance 10 20) => 30))
 
     (fact "inherits class methods"
-      (let [class (rb/new-class* (rb/eval "File") {})]
+      (let [class (rb/new-class (rb/eval "File") {})]
         (rb/public-send "exist?" class "foobar.baz") => false))
 
     (fact "calls methods refering to self"
-      (let [class (rb/new-class* (rb/eval "String") {"append"
+      (let [class (rb/new-class (rb/eval "String") {"append"
                                                      (fn [self a] (str (:self self) "-" a))})
             instance (rb/new class "some-str")]
         (rb/public-send "append" instance "foo") => "some-str-foo"))
 
+    (fact "creates class methods"
+      (let [class (rb/new-class {"self.foo" (fn [_] "FOO")})]
+        (rb/public-send "foo" class) => "FOO"))
+
     (fact "refers to 'super'"
-      (let [class (rb/new-class* (rb/eval "String")
-                                 {"upcase" (fn [self]
-                                             (str "-" ((:super self)) "-" (:self self)))})
+      (let [class (rb/new-class (rb/eval "String")
+                                {"upcase" (fn [self]
+                                            (str "-" ((:super self)) "-" (:self self)))})
             instance (rb/new class "str")]
         (rb/public-send "upcase" instance) => "-STR-str"))
 
     (fact "defines a constructor and accesses instance variables"
-      (let [class (rb/new-class* (rb/eval "String")
-                                 {"initialize" (fn [self var]
-                                                 (rb/set-variable (:self self) "@var" var))
-                                  "foo" (fn [self]
-                                          (rb/get-variable (:self self) "@var"))})
+      (let [class (rb/new-class (rb/eval "String")
+                                {"initialize" (fn [self var]
+                                               (rb/set-variable (:self self) "@var" var))
+                                 "foo" (fn [self]
+                                         (rb/get-variable (:self self) "@var"))})
             instance (rb/new class :some-var)]
         (rb/public-send "foo" instance) => :some-var))))
 
@@ -95,13 +99,13 @@
 
   (fact "defines classes subclassing others"
     (rb/ruby
-     (defclass SomeClass2 'String)
+     (defclass SomeClass2 (rb/rb String))
      (.upcase (new SomeClass2 "foo")))
     => "FOO")
 
   (fact "defines classes subclassing others"
     (rb/ruby
-     (defclass SomeClass3 'String
+     (defclass SomeClass3 (rb/rb String)
        (defn upcase [] (str (super) "-" self)))
      (.upcase (new SomeClass3 "bar")))
     => "BAR-bar")

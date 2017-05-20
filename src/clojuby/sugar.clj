@@ -34,7 +34,7 @@
 (defmethod to-ruby-form 'defclass [[_ name & rest]]
   (let [[sub rest] (separate-superclass rest)]
     `(let [body# ~(as-class-body rest)
-           class# (clojuby.core/new-class* ~sub body#)]
+           class# (clojuby.core/new-class ~sub body#)]
        (def ~name class#)
        (clojuby.core/public-send "const_set" clojuby.core/ruby-object
                                  ~(keyword name) class#)

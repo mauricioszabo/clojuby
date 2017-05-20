@@ -185,12 +185,15 @@
           bound (.bind unbound context self)]
       (.call bound context (normalize-args args) Block/NULL_BLOCK))))
 
-(defn new-class*
-  ([methods] (new-class* ruby-object methods))
+(defn new-class
+  ([methods] (new-class ruby-object methods))
   ([superclass methods]
    (let [class (public-send "new" ruby-class superclass)]
      (doseq [[name fun] methods
-             :let [arity (arity-of-fn fun)
+             :let [method-name (str/replace-first name "self." "")
+                   receiving-class (if (str/starts-with? name "self.")
+                                     (.getMetaClass class)
+                                     class)
                    bindings (fn [self] {:self self
                                         :super (define-super-fn superclass self name)})
                    call-fn (fn [context self class name args block]
@@ -198,6 +201,7 @@
                                         (bindings self)
                                         (map rb->clj args))))
 
+                   arity (arity-of-fn fun)
                    gen (fn gen [] (proxy [DynamicMethod] [class
                                                           Visibility/PUBLIC
                                                           CallConfiguration/BACKTRACE_AND_SCOPE
@@ -210,7 +214,7 @@
                                     (getArity [] (Arity/createArity arity))
                                     (dup []
                                       (gen))))]]
-       (.addMethod class name (gen)))
+       (.addMethod receiving-class method-name (gen)))
      class)))
 
 (defn set-variable [self name value]
