@@ -1,14 +1,3 @@
-# Clojuby
-
-Because you can rubyfy Clojure, but cannot clojurify Ruby...
-
-... or whatever that means
-
-## Usage
-
-Let's say we have ActiveRecord and Sinatra gems installed:
-
-```clojure
 (ns sinatra-ar (:require [clojuby.core :refer [rb rb-require ruby] :as rb]))
 
 (rb-require "activerecord-jdbcsqlite3-adapter")
@@ -36,6 +25,38 @@ Let's say we have ActiveRecord and Sinatra gems installed:
            (.create! {:name "Baz" :age 20 :likes "Java"}))))
  (.migrate CreateUsers :up))
 
+(defn edit [self user]
+  (ruby
+   (.erb self "
+<html><body>
+<% if user.errors %>
+  <%= user.errors.full_messages.join('<br />') %>
+  <br /><hr />
+  <br />
+<% end %>
+<form method='POST' action='<%= user.id %>'
+<label>
+  Name:
+  <input type='string' name='user[name]' value='<%= user.name %>'>
+</label>
+<br /> <br />
+<label>
+  Age:
+  <input type='string' name='user[age]' value='<%= user.age %>'>
+</label>
+<br /> <br />
+<label>
+  Likes:
+  <input type='string' name='user[likes]' value='<%= user.likes %>'>
+</label>
+<br /> <br />
+
+<input type='submit' value='Save'>
+</form>
+</body></html>
+"
+         {:locals {:user user}})))
+
 (ruby
  (doto (defclass App (rb Sinatra.Base))
        (.get "/" (fn []
@@ -49,16 +70,14 @@ Let's say we have ActiveRecord and Sinatra gems installed:
 <% end %>
 </body></html>
 ")))
-;; AND SO ON...
+       (.get "/:id" (fn [id]
+                      (println self)
+                      (edit self (.find User id))))
+
+       (.post "/:id" (fn [id]
+                       (let [user (.find User id)]
+                         (if (.update-attributes user (-> self .params (get "user")))
+                           (.redirect self "/")
+                           (edit self user)))))
+
        (.run!)))
-
-```
-
-A full example is on `examples/sinatra_ar.clj`.
-
-## License
-
-Copyright © 2017 Maurício Szabo
-
-Distributed under the Eclipse Public License either version 1.0 or (at
-your option) any later version.

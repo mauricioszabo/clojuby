@@ -2,7 +2,7 @@
 
 (rb-require "sinatra")
 (ruby
- (doto (defclass App 'Sinatra.Base)
+ (doto (defclass App (rb Sinatra.Base))
        (.get "/" (fn [] "Hello, world!"))
        (.get "/params" (fn [ & params]
                          (str "Hello, " (-> self .params (get "name")))))
