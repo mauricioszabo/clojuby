@@ -47,12 +47,19 @@
 (defmethod to-ruby-form :default [form]
   form)
 
-(defn to-ruby-sym [sym]
-  (cond
-    (= sym 'new) 'clojuby.core/new
+(def ^:private replace-forms {'new 'clojuby.core/new})
 
-    (and (symbol? sym) (str/starts-with? sym "."))
-    `(partial ~'clojuby.core/public-send
-              ~(normalize-method sym))
-
-    :else sym))
+(defn sugarify [forms]
+  (let [to-replace (->> forms flatten
+                        (filter #(and (symbol? %) (str/starts-with? % ".")))
+                        (map (fn [name] [name (gensym (normalize-method name))]))
+                        (into {}))
+        lets (->> to-replace
+                  (mapcat (fn [[sym name]]
+                            [name `(partial ~'clojuby.core/public-send
+                                            ~(normalize-method sym))])))
+        replace (merge replace-forms to-replace)]
+    `(let ~(vec lets)
+       ~@(->> forms
+              (walk/postwalk-replace replace)
+              (walk/prewalk to-ruby-form)))))

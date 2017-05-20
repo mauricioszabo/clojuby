@@ -102,13 +102,12 @@
     (rb/ruby
      (defclass SomeClass3 'String
        (defn upcase [] (str (super) "-" self)))
-     (.upcase (new SomeClass3 "bar"))
-     => "BAR-bar"))
+     (.upcase (new SomeClass3 "bar")))
+    => "BAR-bar")
 
   (fact "understands bindings"
     (rb/ruby (defclass SomeClass4 (defn x [] 10)))
     (rb/ruby (.instance-exec (new SomeClass4) 2 (fn [two] (+ two (.x self))))) => 12)
-  (macroexpand-1 '(rb/ruby (.instance-exec (new SomeClass4) 2 (fn [two] (+ two (.x self))))))
 
   (fact "plays nice with doto"
     (let [glob (atom 0)]

@@ -218,10 +218,7 @@
     (.newInstance class context arguments Block/NULL_BLOCK)))
 
 (defmacro ruby [ & forms]
-  (->> forms
-       (cons `do)
-       (walk/postwalk sugar/to-ruby-sym)
-       (walk/prewalk sugar/to-ruby-form)))
+  (sugar/sugarify forms))
 
 (defmacro rb [obj]
   `(raw-eval ~(str obj)))
