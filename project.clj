@@ -1,6 +1,6 @@
-(defproject clojuby "0.1.0-SNAPSHOT"
-  :description "FIXME: write description"
-  :url "http://example.com/FIXME"
+(defproject clojuby "0.1.0"
+  :description "Calling Ruby from Clojure, with Clojure structures"
+  :url "https://github.com/mauricioszabo/clojuby"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.8.0"]
