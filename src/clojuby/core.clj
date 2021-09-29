@@ -6,8 +6,9 @@
   (:import [org.jruby Ruby RubyFixnum RubyHash RubyFloat RubyArray
             RubySymbol RubyString RubyBoolean RubyNil RubyObject
             RubyClass RubyProc]
+           [org.jruby.ext.set RubySet]
            [org.jruby.javasupport JavaUtil]
-           [org.jruby.runtime Block Visibility Arity CallBlock BlockCallback]
+           [org.jruby.runtime Block Visibility Arity Signature CallBlock BlockCallback]
            [org.jruby.runtime.builtin IRubyObject]
            [org.jruby.internal.runtime.methods DynamicMethod CallConfiguration]))
 
@@ -17,6 +18,7 @@
   (.evalScriptlet runtime code))
 
 (def ^:private ruby-nil (raw-eval "nil"))
+(def ^:private ruby-set (raw-eval "require 'set'; Set"))
 (def ^:private ruby-class (raw-eval "Class"))
 (def ruby-object (raw-eval "Object"))
 (def ^:private ruby-main (raw-eval "self"))
@@ -54,6 +56,9 @@
         (.callMethod context method (normalize-args args) block)
         rb->clj)))
 
+(prefer-method print-method java.util.Map org.jruby.runtime.builtin.IRubyObject)
+(prefer-method print-method java.util.RandomAccess org.jruby.runtime.builtin.IRubyObject)
+(prefer-method print-method java.util.Set org.jruby.runtime.builtin.IRubyObject)
 
 (extend-protocol CljRubyObject
   RubyFixnum
@@ -110,7 +115,7 @@
 
     (CallBlock/newCallClosure ruby-main
                               ruby-object
-                              (Arity/createArity (arity-of-fn me))
+                              (Signature/from (Arity/createArity (arity-of-fn me)))
                               callback
                               context)))
 
@@ -145,11 +150,12 @@
                        (#(RubyArray/newArray runtime %))))
 
   java.util.Set
-  (clj->rb [this] (->> this
-                       (map clj->rb)
-                       (#(.callMethod (RubyArray/newArray runtime %)
-                                      context
-                                      "to_set"))))
+  (clj->rb [this]
+           (prn "WAT")
+           (->> this
+                (map clj->rb)
+                (into-array IRubyObject)
+                (RubySet/create context ruby-set)))
 
   clojure.lang.Fn
   (clj->rb [me]
