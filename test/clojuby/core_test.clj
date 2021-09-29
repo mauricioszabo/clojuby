@@ -1,45 +1,48 @@
 (ns clojuby.core-test
-  (:require [midje.sweet :refer :all]
+  (:require [clojure.test :refer [deftest testing]]
+            [check.core :refer [check]]
             [clojuby.core :as rb]))
 
-(facts "about ruby literals"
-  (fact "converts numbers"
-    (rb/eval "1") => 1
-    (rb/eval "1.1") => 1.1
-    (rb/clj->rb 1) => (rb/raw-eval "1")
-    (rb/clj->rb 1.1) => (rb/raw-eval "1.1"))
+(deftest ruby-literals
+  (testing "converts numbers"
+    (check (rb/eval "1") => 1)
+    (check (rb/eval "1.1") => 1.1)
+    (check (rb/clj->rb 1) => (rb/raw-eval "1"))
+    (check (rb/clj->rb 1.1) => (rb/raw-eval "1.1")))
 
-  (fact "converts strings and symbols"
-    (rb/eval "\"foo\"") => "foo"
-    (rb/eval ":foo") => :foo
-    (rb/clj->rb "foo") => (rb/raw-eval "\"foo\"")
-    (rb/clj->rb :foo) => (rb/raw-eval ":foo"))
+  (testing "converts strings and symbols"
+    (check (rb/eval "\"foo\"") => "foo")
+    (check (rb/eval ":foo") => :foo)
+    (check (rb/clj->rb "foo") => (rb/raw-eval "\"foo\""))
+    (check (rb/clj->rb :foo) => (rb/raw-eval ":foo")))
 
-  (fact "converts booleans"
-    (rb/eval "true") => true
-    (rb/eval "false") => false
-    (rb/eval "nil") => nil
-    (rb/clj->rb true) => (rb/raw-eval "true")
-    (rb/clj->rb false) => (rb/raw-eval "false")
-    (rb/clj->rb nil) => (rb/raw-eval "nil"))
+  (testing "converts booleans"
+    (check (rb/eval "true") => true)
+    (check (rb/eval "false") => false)
+    (check (rb/eval "nil") => nil)
+    (check (rb/clj->rb true) => (rb/raw-eval "true"))
+    (check (rb/clj->rb false) => (rb/raw-eval "false"))
+    (check (rb/clj->rb nil) => (rb/raw-eval "nil")))
 
-  (fact "converts colections"
-    (rb/eval "{a: 10}") => {:a 10}
-    (rb/eval "[:a]") => [:a]
-    (rb/eval "[:a, :b]") => [:a :b]
-    (rb/eval "[1, 2, :a]") => [1 2 :a]
+  (testing "converts colections"
+    (check (rb/eval "{a: 10}") => {:a 10})
+    (check (rb/eval "[:a]") => [:a])
+    (check (rb/eval "[:a, :b]") => [:a :b])
+    (check (rb/eval "[1, 2, :a]") => [1 2 :a])
     (rb/rb-require "set")
-    (rb/eval "[:a, :b].to_set") => #{:a :b}
-    (rb/clj->rb {:a 10}) => (rb/raw-eval "{a: 10}")
-    (rb/clj->rb [1 2 :a]) => (rb/raw-eval "[1, 2, :a]")
-    (rb/clj->rb #{1 2 :a}) => (rb/raw-eval "Set[1, 2, :a]"))
+    (check (rb/eval "Set[:a, :b]") => #{:a :b})
 
-  (fact "converts blocks"
+    (check (rb/clj->rb {:a 10}) => (rb/raw-eval "{a: 10}"))
+    (check (rb/clj->rb [1 2 :a]) => (rb/raw-eval "[1, 2, :a]"))
+    (check (rb/clj->rb #{1 2 :a}) => (rb/raw-eval "Set[1, 2, :a]")))
+
+  (testing "converts blocks"
     (let [f1 (rb/eval "proc { |x| x + 2}")
           f2 (rb/eval "proc { |x, &b| b.call(x) }")]
-      (f1 10) => 12
-      (f2 10 inc) => 11)))
+      (check (f1 10) => 12)
+      (check (f2 10 inc) => 11))))
 
+#_
 (facts "about Ruby interpretation"
   (fact "calls methods"
     (rb/public-send "to_s" 10) => "10"
@@ -84,6 +87,7 @@
             instance (rb/new class :some-var)]
         (rb/public-send "foo" instance) => :some-var))))
 
+#_
 (facts "with sugared syntax"
   (fact "calls methods on objects"
     (rb/ruby (.upcase "foo")) => "FOO"
