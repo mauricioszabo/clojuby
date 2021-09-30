@@ -8,7 +8,7 @@
             RubyClass RubyProc]
            [org.jruby.ext.set RubySet]
            [org.jruby.javasupport JavaUtil]
-           [org.jruby.runtime Block Visibility Arity Signature CallBlock BlockCallback]
+           [org.jruby.runtime Block Block$Type Visibility Arity Signature CallBlock BlockCallback]
            [org.jruby.runtime.builtin IRubyObject]
            [org.jruby.internal.runtime.methods DynamicMethod CallConfiguration]))
 
@@ -21,6 +21,7 @@
 (def ^:private ruby-set (raw-eval "require 'set'; Set"))
 (def ^:private ruby-class (raw-eval "Class"))
 (def ruby-object (raw-eval "Object"))
+(def ruby-module (raw-eval "Module"))
 (def ^:private ruby-main (raw-eval "self"))
 (def ^:private ruby-proc-wrapper
   (raw-eval "proc { |fn|
@@ -41,16 +42,47 @@
 (defprotocol RubyCljObject (clj->rb [this]))
 
 (defn- normalize-args [args]
-  (->> args (map clj->rb) (into-array RubyObject)))
+  (->> args (map clj->rb) (into-array IRubyObject)))
 
 (defn- normalize-block [args]
   (let [possible-block (last args)]
-    (if (fn? possible-block)
-      [(vec (butlast args)) (clj->rb possible-block)]
+    (if (instance? Block possible-block)
+      [(vec (butlast args)) possible-block]
       [args Block/NULL_BLOCK])))
 
 (defn public-send [method obj & args]
   (let [[args block] (normalize-block args)]
+    (-> obj
+        clj->rb
+        (.callMethod context method (normalize-args args) block)
+        rb->clj)))
+
+(def ^:private IRubyObjectColl (type (into-array IRubyObject [])))
+(defn- is-iruby-coll? [obj]
+  (instance? IRubyObjectColl obj))
+
+(defn & [function]
+  (let [callback (proxy [BlockCallback] []
+                   (call [context args block]
+                     (if (is-iruby-coll? args)
+                       (->> args
+                            (map rb->clj)
+                            (apply function)
+                            clj->rb)
+                       (-> args rb->clj function clj->rb))))]
+    (CallBlock/newCallClosure ruby-main
+                              ruby-object
+                              (Signature/from (Arity/createArity (arity-of-fn function)))
+                              callback
+                              context)))
+
+(defn proc [function]
+  (let [block (& function)]
+    (RubyProc/newProc runtime block Block$Type/PROC)))
+
+(defn public-send& [method obj & args]
+  (let [block (-> args last &)
+        args (butlast args)]
     (-> obj
         clj->rb
         (.callMethod context method (normalize-args args) block)
@@ -106,19 +138,6 @@
   Object
   (rb->clj [this] this))
 
-(defn- generate-proc-from-fn [me]
-  (let [callback (proxy [BlockCallback] []
-                    (call [context args block]
-                      (let [args (cond-> (mapv rb->clj args)
-                                         (not= block Block/NULL_BLOCK) (conj block))]
-                        (clj->rb (apply me args)))))]
-
-    (CallBlock/newCallClosure ruby-main
-                              ruby-object
-                              (Signature/from (Arity/createArity (arity-of-fn me)))
-                              callback
-                              context)))
-
 (extend-protocol RubyCljObject
   java.lang.Long
   (clj->rb [this] (RubyFixnum. runtime this))
@@ -151,7 +170,6 @@
 
   java.util.Set
   (clj->rb [this]
-           (prn "WAT")
            (->> this
                 (map clj->rb)
                 (into-array IRubyObject)
@@ -169,8 +187,7 @@
                               Block/NULL_BLOCK))
 
       (-> me meta :dont-convert?) me
-      :else (generate-proc-from-fn me)))
-
+      :else (proc me)))
 
   IRubyObject
   (clj->rb [this] this)
@@ -190,6 +207,19 @@
     (let [unbound (.instance_method parent-class (RubySymbol/newSymbol runtime name))
           bound (.bind unbound context self)]
       (.call bound context (normalize-args args) Block/NULL_BLOCK))))
+
+(defn create-class! [class-name parent]
+  (let [class (RubyClass/newClass runtime parent)]
+    (.setBaseName class class-name)
+    (.defineConstant ruby-object class-name class)
+    class))
+
+(defn add-method! [ruby-class method-name function]
+  (.defineMethodFromBlock ruby-class
+    context
+    (clj->rb method-name)
+    (& function)
+    Visibility/PUBLIC))
 
 (defn new-class
   ([methods] (new-class ruby-object methods))
