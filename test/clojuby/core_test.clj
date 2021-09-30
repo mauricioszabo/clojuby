@@ -62,39 +62,39 @@
 
 (deftest ruby-interpretation
   (testing "calls methods"
-    (check (rb/public-send "to_s" 10) => "10")
-    (check (rb/public-send "to_s" 10 16) => "a"))
+    (check (rb/public-send 10 "to_s") => "10")
+    (check (rb/public-send 10 "to_s" 16) => "a"))
 
   (testing "calls methods with blocks"
-    (check (rb/public-send "map" (rb/eval "1..5") (rb/& inc)) => [2 3 4 5 6])
-    (check (rb/public-send& "map" (rb/eval "1..5") inc) => [2 3 4 5 6]))
+    (check (rb/public-send (rb/eval "1..5") "map" (rb/& inc)) => [2 3 4 5 6])
+    (check (rb/public-send& (rb/eval "1..5") "map" inc) => [2 3 4 5 6]))
 
   (testing "about class creation"
     (testing "creates simple class"
       (let [class (rb/new-class {"sum_two" (fn [_ a b] (+ a b))})
             instance (rb/new class)]
-        (check (rb/public-send "sum_two" instance 10 20) => 30)))
+        (check (rb/public-send instance "sum_two" 10 20) => 30)))
 
     (testing "inherits class methods"
       (let [class (rb/new-class (rb/eval "File") {})]
-        (check (rb/public-send "exist?" class "foobar.baz") => false)))
+        (check (rb/public-send class "exist?" "foobar.baz") => false)))
 
     (testing "calls methods refering to self"
       (let [class (rb/new-class (rb/eval "String") {"append"
                                                      (fn [self a] (str (:self self) "-" a))})
             instance (rb/new class "some-str")]
-        (check (rb/public-send "append" instance "foo") => "some-str-foo")))
+        (check (rb/public-send instance "append" "foo") => "some-str-foo")))
 
     (testing "creates class methods"
       (let [class (rb/new-class {"self.foo" (fn [_] "FOO")})]
-        (check (rb/public-send "foo" class) => "FOO")))
+        (check (rb/public-send class "foo") => "FOO")))
 
     (testing "refers to 'super'"
       (let [class (rb/new-class (rb/eval "String")
                                 {"upcase" (fn [self]
                                             (str "-" ((:super self)) "-" (:self self)))})
             instance (rb/new class "str")]
-        (check (rb/public-send "upcase" instance) => "-STR-str")))
+        (check (rb/public-send instance "upcase") => "-STR-str")))
 
     (testing "defines a constructor and accesses instance variables"
       (let [class (rb/new-class (rb/eval "String")
@@ -103,7 +103,7 @@
                                  "foo" (fn [self]
                                          (rb/get-variable (:self self) "@var"))})
             instance (rb/new class :some-var)]
-        (check (rb/public-send "foo" instance) => :some-var)))))
+        (check (rb/public-send instance "foo") => :some-var)))))
 
 #_
 (facts "with sugared syntax"

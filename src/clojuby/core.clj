@@ -50,7 +50,7 @@
       [(vec (butlast args)) possible-block]
       [args Block/NULL_BLOCK])))
 
-(defn public-send [method obj & args]
+(defn public-send [obj method & args]
   (let [[args block] (normalize-block args)]
     (-> obj
         clj->rb
@@ -80,7 +80,7 @@
   (let [block (& function)]
     (RubyProc/newProc runtime block Block$Type/PROC)))
 
-(defn public-send& [method obj & args]
+(defn public-send& [obj method & args]
   (let [block (-> args last &)
         args (butlast args)]
     (-> obj
@@ -224,7 +224,7 @@
 (defn new-class
   ([methods] (new-class ruby-object methods))
   ([superclass methods]
-   (let [class (public-send "new" ruby-class superclass)]
+   (let [class (public-send ruby-class "new" superclass)]
      (doseq [[name fun] methods
              :let [method-name (str/replace-first name "self." "")
                    receiving-class (if (str/starts-with? name "self.")
@@ -270,7 +270,7 @@
   `(raw-eval ~(str/replace obj "." "::")))
 
 (defmethod print-method IRubyObject [this ^java.io.Writer w]
-  (.write w (public-send "inspect" this)))
+  (.write w (public-send this "inspect")))
 
 ; -- Helper macros for readers --
 (defn as-ruby-obj [form]
