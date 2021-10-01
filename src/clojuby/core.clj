@@ -42,6 +42,7 @@
 (defprotocol RubyCljObject (clj->rb [this]))
 
 (defn- normalize-args [args]
+  (def args args)
   (->> args (map clj->rb) (into-array IRubyObject)))
 
 (defn- normalize-block [args]
@@ -61,15 +62,18 @@
 (defn- is-iruby-coll? [obj]
   (instance? IRubyObjectColl obj))
 
+(defn- normalize-call-fun [function context args block]
+  (if (is-iruby-coll? args)
+    (->> args
+         (map rb->clj)
+         (apply function)
+         clj->rb)
+    (-> args rb->clj function clj->rb)))
+
 (defn & [function]
   (let [callback (proxy [BlockCallback] []
                    (call [context args block]
-                     (if (is-iruby-coll? args)
-                       (->> args
-                            (map rb->clj)
-                            (apply function)
-                            clj->rb)
-                       (-> args rb->clj function clj->rb))))]
+                    (normalize-call-fun function context args block)))]
     (CallBlock/newCallClosure ruby-main
                               ruby-object
                               (Signature/from (Arity/createArity (arity-of-fn function)))
@@ -91,6 +95,7 @@
 (prefer-method print-method java.util.Map org.jruby.runtime.builtin.IRubyObject)
 (prefer-method print-method java.util.RandomAccess org.jruby.runtime.builtin.IRubyObject)
 (prefer-method print-method java.util.Set org.jruby.runtime.builtin.IRubyObject)
+(prefer-method print-method java.util.List org.jruby.runtime.builtin.IRubyObject)
 
 (extend-protocol CljRubyObject
   RubyFixnum
@@ -263,8 +268,38 @@
   (let [arguments (->> args (map clj->rb) (into-array RubyObject))]
     (.newInstance class context arguments Block/NULL_BLOCK)))
 
+(defprotocol SugarifiedSyntax
+  (sugarify [_]))
+
+(extend-protocol SugarifiedSyntax
+  clojure.lang.Symbol
+  (sugarify [this]
+    ; (case this
+    ;   & `clojuby.core/&
+      (if (-> this namespace (= "rb"))
+        `(eval ~(-> this name (str/replace #"\." "::")))
+        this))
+
+  clojure.lang.PersistentList
+  (sugarify [this]
+    (let [[fst & rst] this]
+      (if (symbol? fst)
+        (case fst
+          . `(public-send ~(-> rst first sugarify)
+                          ~(-> rst second name (str/replace #"-" "_"))
+                          ~@(->> rst (drop  2) (map sugarify)))
+          & `(clojuby.core/& ~@(map sugarify rst))
+          (if (-> fst resolve meta :macro)
+            this
+            (map sugarify this))))))
+
+  Object
+  (sugarify [this] `(clj->rb ~this)))
+
 (defmacro ruby [ & forms]
-  (sugar/sugarify forms))
+  (let [forms (map sugarify forms)]
+    `(do ~@forms)))
+  ; (sugar/sugarify forms))
 
 (defmacro rb [obj]
   `(raw-eval ~(str/replace obj "." "::")))

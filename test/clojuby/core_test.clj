@@ -105,46 +105,52 @@
             instance (rb/new class :some-var)]
         (check (rb/public-send instance "foo") => :some-var)))))
 
-#_
-(facts "with sugared syntax"
+(deftest sugared-syntax
+  (testing "renames rb/* to pure Ruby calls"
+    (check (rb/ruby rb/Object) => (rb/eval "Object")))
+
   (testing "calls methods on objects"
-    (rb/ruby (.upcase "foo")) => "FOO"
-    (rb/ruby (.to-s (rb/rb Class))) => "Class"
-    (rb/ruby (.name (rb/rb File.Constants))) => "File::Constants")
+    (check (rb/ruby (. "foo" upcase)) => "FOO")
+    (check (rb/ruby (. rb/Class to-s)) => "Class")
+    (check (rb/ruby (. rb/File.Constants name)) => "File::Constants"))
 
-  (testing "defines classes"
-    (rb/ruby
-     (defclass SomeClass
-       (defn some-method [a b] (+ a b)))
-     (.some_method (new SomeClass) 1 2))
-    => 3)
-
-  (testing "defines classes subclassing others"
-    (rb/ruby
-     (defclass SomeClass2 (rb/rb String))
-     (.upcase (new SomeClass2 "foo")))
-    => "FOO")
-
-  (testing "defines classes subclassing others"
-    (rb/ruby
-     (defclass SomeClass3 (rb/rb String)
-       (defn upcase [] (str (super) "-" self)))
-     (.upcase (new SomeClass3 "bar")))
-    => "BAR-bar")
-
-  (testing "understands bindings"
-    (rb/ruby (defclass SomeClass4 (defn x [] 10)))
-    (rb/ruby (.instance-exec (new SomeClass4) 2 (fn [two] (+ two (.x self))))) => 12)
-
-  (testing "plays nice with doto"
-    (let [glob (atom 0)]
-      (rb/ruby
-       (doto (new (defclass DotoExample
-                    (defn upd [a] (swap! glob + a))))
-             (.upd 10)
-             (.upd 2)))
-      @glob => 12))
-
-  (testing "plays nice with other macros"
-    (rb/ruby
-     (-> "some-string" .upcase .chop)) => "SOME-STRIN"))
+  (testing "self test"
+    (check (rb/ruby (. rb/Object instance-eval (& (fn [_]
+                                                    (rb/ruby rb/self)))))
+           => (rb/raw-eval "Object"))))
+  ; (testing "defines classes"
+  ;   (rb/ruby
+  ;    (defclass SomeClass
+  ;      (defn some-method [a b] (+ a b)))
+  ;    (.some_method (new SomeClass) 1 2))
+  ;   => 3)
+  ;
+  ; (testing "defines classes subclassing others"
+  ;   (rb/ruby
+  ;    (defclass SomeClass2 (rb/rb String))
+  ;    (.upcase (new SomeClass2 "foo")))
+  ;   => "FOO")
+  ;
+  ; (testing "defines classes subclassing others"
+  ;   (rb/ruby
+  ;    (defclass SomeClass3 (rb/rb String)
+  ;      (defn upcase [] (str (super) "-" self)))
+  ;    (.upcase (new SomeClass3 "bar")))
+  ;   => "BAR-bar")
+  ;
+  ; (testing "understands bindings"
+  ;   (rb/ruby (defclass SomeClass4 (defn x [] 10)))
+  ;   (rb/ruby (.instance-exec (new SomeClass4) 2 (fn [two] (+ two (.x self))))) => 12)
+  ;
+  ; (testing "plays nice with doto"
+  ;   (let [glob (atom 0)]
+  ;     (rb/ruby
+  ;      (doto (new (defclass DotoExample
+  ;                   (defn upd [a] (swap! glob + a))))
+  ;            (.upd 10)
+  ;            (.upd 2)))
+  ;     @glob => 12))
+  ;
+  ; (testing "plays nice with other macros"
+  ;   (rb/ruby
+  ;    (-> "some-string" .upcase .chop)) => "SOME-STRIN"))
