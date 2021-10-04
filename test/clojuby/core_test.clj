@@ -116,6 +116,9 @@
     (check (rb/ruby (. rb/File.Constants name)) => "File::Constants"))
 
   (testing "self test"
+    (check (rb/ruby (. [1 2 3] instance-eval (& (fn [_]
+                                                  (rb/ruby rb/self)))))
+           => [1 2 3])
     (check (rb/ruby (. rb/Object instance-eval (& (fn [_]
                                                     (rb/ruby rb/self)))))
            => (rb/raw-eval "Object"))))
