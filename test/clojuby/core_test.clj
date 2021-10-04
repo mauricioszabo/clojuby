@@ -29,7 +29,7 @@
     (let [f1 (rb/eval "proc { |x| x + 2}")
           f2 (rb/eval "proc { |x, &b| b.call(x) }")]
       (check (f1 10) => 12)
-      (check (f2 10 inc) => 11))))
+      (check (f2 10 (rb/& inc)) => 11))))
 
 (deftest conversion-to-ruby
   (testing "converts numbers"
@@ -67,7 +67,8 @@
 
   (testing "calls methods with blocks"
     (check (rb/public-send (rb/eval "1..5") "map" (rb/& inc)) => [2 3 4 5 6])
-    (check (rb/public-send& (rb/eval "1..5") "map" inc) => [2 3 4 5 6]))
+    (check (rb/public-send& (rb/eval "1..5") "map" inc) => [2 3 4 5 6])
+    (check (rb/public-send [1 2 3 4] "map" (rb/& inc)) => [2 3 4 5]))
 
   (testing "about class creation"
     (testing "creates simple class"

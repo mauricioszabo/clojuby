@@ -8,7 +8,8 @@
             RubyClass RubyProc]
            [org.jruby.ext.set RubySet]
            [org.jruby.javasupport JavaUtil]
-           [org.jruby.runtime Block Block$Type Visibility Arity Signature CallBlock BlockCallback]
+           [org.jruby.runtime Block Block$Type Visibility Arity Signature
+            CallBlock BlockCallback ThreadContext]
            [org.jruby.runtime.builtin IRubyObject]
            [org.jruby.internal.runtime.methods DynamicMethod CallConfiguration]))
 
@@ -30,6 +31,11 @@
                  fn.invoke(self).invoke(*args)
                }
              }"))
+
+(defrecord SimplePos [file line]
+  org.jruby.lexer.yacc.ISourcePosition
+  (^String getFile [_] file)
+  (getLine [_] line))
 
 (defn- arity-of-fn [f]
   (let [methods (-> f class .getDeclaredMethods)]
@@ -58,27 +64,23 @@
         (.callMethod context method (normalize-args args) block)
         rb->clj)))
 
-(def ^:private IRubyObjectColl (type (into-array IRubyObject [])))
-(defn- is-iruby-coll? [obj]
-  (instance? IRubyObjectColl obj))
-
-(defn- normalize-call-fun [function context args block]
-  (if (is-iruby-coll? args)
-    (->> args
-         (map rb->clj)
-         (apply function)
-         clj->rb)
-    (-> args rb->clj function clj->rb)))
+(defrecord Callback [function]
+  BlockCallback
+  (^IRubyObject call [this
+                      ^ThreadContext context
+                      ^"[Lorg.jruby.runtime.builtin.IRubyObject;" args
+                      ^Block block]
+         (->> args
+          (map rb->clj)
+          (apply function)
+          clj->rb)))
 
 (defn & [function]
-  (let [callback (proxy [BlockCallback] []
-                   (call [context args block]
-                    (normalize-call-fun function context args block)))]
-    (CallBlock/newCallClosure ruby-main
-                              ruby-object
-                              (Signature/from (Arity/createArity (arity-of-fn function)))
-                              callback
-                              context)))
+  (CallBlock/newCallClosure ruby-main
+                            ruby-object
+                            (Signature/from (Arity/createArity (arity-of-fn function)))
+                            (->Callback function)
+                            context))
 
 (defn proc [function]
   (let [block (& function)]
@@ -154,7 +156,7 @@
   (clj->rb [this] (RubyString/newString runtime this))
 
   clojure.lang.Keyword
-  (clj->rb [this] (RubySymbol/newSymbol runtime (name this)))
+  (clj->rb [this] (.fastNewSymbol runtime (name this)))
 
   java.lang.Boolean
   (clj->rb [this] (RubyBoolean/newBoolean runtime this))
