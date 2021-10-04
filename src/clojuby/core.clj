@@ -59,23 +59,28 @@
         (.callMethod context method (normalize-args args) block)
         rb->clj)))
 
-(defrecord Callback [function]
+(def ^:dynamic self ruby-main)
+
+(defrecord Callback [function block]
   BlockCallback
   (^IRubyObject call [this
                       ^ThreadContext context
                       ^"[Lorg.jruby.runtime.builtin.IRubyObject;" args
-                      ^Block block]
-         (->> args
-          (map rb->clj)
-          (apply function)
-          clj->rb)))
+                      ^Block block-param]
+    (binding [self (.. @block getFrame getSelf)]
+      (->> args
+           (map rb->clj)
+           (apply function)
+           clj->rb))))
 
 (defn & [function]
-  (CallBlock/newCallClosure ruby-main
-                            ruby-object
-                            (Signature/from (Arity/createArity (arity-of-fn function)))
-                            (->Callback function)
-                            context))
+  (let [block (atom nil)]
+    (reset! block (CallBlock/newCallClosure ruby-main
+                                            ruby-object
+                                            (-> function arity-of-fn
+                                                Arity/createArity Signature/from)
+                                            (->Callback function block)
+                                            context))))
 
 (defn proc [function]
   (let [block (& function)]
@@ -271,11 +276,11 @@
 (extend-protocol SugarifiedSyntax
   clojure.lang.Symbol
   (sugarify [this]
-    ; (case this
-    ;   & `clojuby.core/&
+    (case this
+      rb/self `clojuby.core/self
       (if (-> this namespace (= "rb"))
         `(eval ~(-> this name (str/replace #"\." "::")))
-        this))
+        this)))
 
   clojure.lang.PersistentList
   (sugarify [this]

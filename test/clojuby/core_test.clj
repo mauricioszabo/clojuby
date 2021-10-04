@@ -29,7 +29,11 @@
     (let [f1 (rb/eval "proc { |x| x + 2}")
           f2 (rb/eval "proc { |x, &b| b.call(x) }")]
       (check (f1 10) => 12)
-      (check (f2 10 (rb/& inc)) => 11))))
+      (check (f2 10 (rb/& inc)) => 11)))
+
+  (testing "binds self correctly on blocks"
+    (check (rb/public-send [1 2 3] "instance_eval" (rb/& (fn [_] rb/self)))
+           => [1 2 3])))
 
 (deftest conversion-to-ruby
   (testing "converts numbers"
