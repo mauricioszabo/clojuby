@@ -32,11 +32,6 @@
                }
              }"))
 
-(defrecord SimplePos [file line]
-  org.jruby.lexer.yacc.ISourcePosition
-  (^String getFile [_] file)
-  (getLine [_] line))
-
 (defn- arity-of-fn [f]
   (let [methods (-> f class .getDeclaredMethods)]
     (if (some #(= "getRequiredArity" (.getName %)) methods)
