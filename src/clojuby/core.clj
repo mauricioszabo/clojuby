@@ -158,7 +158,10 @@ proc { |&f|
   (rb->clj [this] this)
 
   Object
-  (rb->clj [this] this))
+  (rb->clj [this] this)
+
+  nil
+  (rb->clj [this] nil))
 
 (extend-protocol RubyCljObject
   java.lang.Long
