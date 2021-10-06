@@ -32,7 +32,7 @@
       (check (f2 10 (rb/& inc)) => 11)))
 
   (testing "binds self correctly on blocks"
-    (check (rb/public-send [1 2 3] "instance_eval" (rb/& (fn [_] rb/self)))
+    (check (rb/public-send [1 2 3] "instance_eval" (rb/&& (fn [self _] self)))
            => [1 2 3])))
 
 (deftest conversion-to-ruby
@@ -120,11 +120,9 @@
     (check (rb/ruby (. rb/File.Constants name)) => "File::Constants"))
 
   (testing "self test"
-    (check (rb/ruby (. [1 2 3] instance-eval (& (fn [_]
-                                                  (rb/ruby rb/self)))))
+    (check (rb/ruby (. [1 2 3] instance-eval (&& (fn [self] self))))
            => [1 2 3])
-    (check (rb/ruby (. rb/Object instance-eval (& (fn [_]
-                                                    (rb/ruby rb/self)))))
+    (check (rb/ruby (. rb/Object instance-eval (& (fn [self] self))))
            => (rb/raw-eval "Object"))))
   ; (testing "defines classes"
   ;   (rb/ruby

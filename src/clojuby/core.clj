@@ -59,28 +59,43 @@
         (.callMethod context method (normalize-args args) block)
         rb->clj)))
 
-(def ^:dynamic self ruby-main)
-
-(defrecord Callback [function block]
+(defrecord Callback [function]
   BlockCallback
   (^IRubyObject call [this
                       ^ThreadContext context
                       ^"[Lorg.jruby.runtime.builtin.IRubyObject;" args
                       ^Block block-param]
-    (binding [self (.. @block getFrame getSelf)]
-      (->> args
-           (map rb->clj)
-           (apply function)
-           clj->rb))))
+    (->> args
+         (map rb->clj)
+         (apply function)
+         clj->rb)))
 
 (defn & [function]
-  (let [block (atom nil)]
-    (reset! block (CallBlock/newCallClosure ruby-main
-                                            ruby-object
-                                            (-> function arity-of-fn
-                                                Arity/createArity Signature/from)
-                                            (->Callback function block)
-                                            context))))
+  (CallBlock/newCallClosure ruby-main
+                            ruby-object
+                            (-> function arity-of-fn
+                                Arity/createArity Signature/from)
+                            (->Callback function)
+                            context))
+
+(def ^:private special-proc
+  (raw-eval "
+proc { |&f|
+  proc { |*args, &b| f.call(self, *args, &b) }
+}"))
+
+(defn && [function]
+  (let [block (& function)]
+    (.. special-proc
+        (call context block)
+        getBlock)))
+    ; #_
+    ; (CallBlock/newCallClosure ruby-main
+    ;                           ruby-object
+    ;                           (-> function arity-of-fn
+    ;                               Arity/createArity Signature/from)
+    ;                           (->Callback function)
+    ;                           context)))
 
 (defn proc [function]
   (let [block (& function)]
@@ -276,11 +291,11 @@
 (extend-protocol SugarifiedSyntax
   clojure.lang.Symbol
   (sugarify [this]
-    (case this
-      rb/self `clojuby.core/self
+    ; (case this
+    ;   rb/self `clojuby.core/self
       (if (-> this namespace (= "rb"))
         `(eval ~(-> this name (str/replace #"\." "::")))
-        this)))
+        this))
 
   clojure.lang.PersistentList
   (sugarify [this]
@@ -291,6 +306,7 @@
                           ~(-> rst second name (str/replace #"-" "_"))
                           ~@(->> rst (drop  2) (map sugarify)))
           & `(clojuby.core/& ~@(map sugarify rst))
+          && `(clojuby.core/&& ~@(map sugarify rst))
           (if (-> fst resolve meta :macro)
             this
             (map sugarify this))))))
