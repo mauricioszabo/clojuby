@@ -110,8 +110,19 @@
             instance (rb/new class :some-var)]
         (check (rb/send instance "foo") => :some-var)))))
 
+#_
+(macroexpand-1
+ '(rb/defclass SomeClass < rb/Array
+      (instantiate [{:keys [super self]} val] (super val 2))
+      (to-s [{:keys [super self]}] (str (super) "-" (first self)))))
+
 (deftest class-creation
-  (testing "generates a Ruby class but don't "))
+  (testing "generates a Ruby class but don't add to Ruby"
+    (rb/defclass SomeClass < rb/Array
+      (initialize [{:keys [super self]} val] (super 2 val))
+      (to-s [{:keys [super self]}] (str (super) "-" (first self))))
+    (check (rb/send (rb/new SomeClass 5) "to_s")
+           => "[5, 5]-5")))
 
 (deftest sugared-syntax
   (testing "renames rb/* to pure Ruby calls"

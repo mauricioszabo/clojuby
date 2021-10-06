@@ -1,6 +1,7 @@
 (ns clojuby.core
   (:refer-clojure :exclude [eval send])
-  (:require [clojuby.sugar :as sugar]
+  (:require [clojure.spec.alpha :as spec]
+            [clojuby.sugar :as sugar]
             [clojure.string :as str]
             [clojure.walk :as walk])
   (:import [org.jruby Ruby RubyFixnum RubyHash RubyFloat RubyArray
@@ -233,18 +234,11 @@ proc { |&f|
           bound (.bind unbound context self)]
       (.call bound context (normalize-args args) Block/NULL_BLOCK))))
 
-; (defn create-class! [class-name parent]
-;   (let [class (RubyClass/newClass runtime parent)]
-;     (.setBaseName class class-name)
-;     (.defineConstant ruby-object class-name class)
-;     class))
-;
-; (defn add-method! [ruby-class method-name function]
-;   (.defineMethodFromBlock ruby-class
-;     context
-;     (clj->rb method-name)
-;     (& function)
-;     Visibility/PUBLIC))
+(defn create-class! [class-name parent]
+  (let [class (RubyClass/newClass runtime parent)]
+    (.setBaseName class class-name)
+    ; (.defineConstant ruby-object class-name class)
+    class))
 
 (defn new-method [class superclass method-name fun]
   (let [bindings (fn [self] {:self self
@@ -273,6 +267,15 @@ proc { |&f|
                        (dup [] (method-gen))))]
     (method-gen)))
 
+(defn add-method! [^RubyClass ruby-class name function]
+  (let [superclass (.getSuperClass ruby-class)
+        method-name (str/replace-first name "self." "")
+        receiving-class (if (str/starts-with? name "self.")
+                          (.getMetaClass ruby-class)
+                          ruby-class)
+        method (new-method ruby-class superclass method-name function)]
+    (.addMethod receiving-class method-name method)))
+
 (defn new-class
   ([methods] (new-class ruby-object methods))
   ([superclass methods]
@@ -285,6 +288,51 @@ proc { |&f|
                    method (new-method class superclass method-name fun)]]
        (.addMethod receiving-class method-name method))
      class)))
+
+(spec/def ::ruby-class (spec/and qualified-symbol? #(-> % namespace (= "rb"))))
+(spec/def ::rb-or-clj (spec/or :ruby ::ruby-class :clj symbol?))
+(spec/def ::extends-part (spec/cat :arrow '#{<} :superclass ::rb-or-clj))
+(spec/def ::includes-extends
+  (spec/alt :include (spec/cat :_ '#{include} :module ::rb-or-clj)
+            :extend (spec/cat :_ '#{extend} :module ::rb-or-clj)
+            :prepend (spec/cat :_ '#{prepend} :module ::rb-or-clj)))
+
+(spec/def ::method-definition (spec/cat :name simple-symbol?
+                                        :arglist vector?
+                                        :body (spec/* any?)))
+
+(spec/def ::new-class-syntax
+  (spec/cat :extends (spec/? ::extends-part)
+            :body (spec/* (spec/or
+                           :extends (spec/spec ::includes-extends)
+                           :method (spec/spec ::method-definition)))))
+
+#_
+(spec/conform ::new-class-syntax body)
+;
+;
+; (spec/conform ::extends-part '(< rb/Object))
+; (spec/conform ::extends-part '(< Object))
+
+(defn- get-ruby-class [[kind sym-name]]
+  (if (= :ruby kind)
+    `(raw-eval ~(-> sym-name name (str/replace #"\." "::")))
+    sym-name))
+
+(defmacro defclass [class-name & body]
+  (let [comformed (spec/conform ::new-class-syntax body)
+        {:keys [extends body]} comformed
+        ruby-class (gensym "ruby-class-")]
+    `(let [~ruby-class (create-class! ~(str class-name)
+                                      ~(get-ruby-class (:superclass
+                                                        extends
+                                                        [:ruby 'rb/Object])))]
+       ~@(for [[command params] body]
+           (case command
+             :method `(add-method! ~ruby-class
+                                   ~(-> params :name str (str/replace #"-" "_"))
+                                   (fn ~(:arglist params) ~@(:body params)))))
+       (def ~class-name ~ruby-class))))
 
 (defn set-variable [self name value]
   (.setInstanceVariable self name (clj->rb value)))
