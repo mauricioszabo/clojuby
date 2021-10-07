@@ -1,7 +1,6 @@
 (ns clojuby.core
   (:refer-clojure :exclude [eval send])
   (:require [clojure.spec.alpha :as spec]
-            [clojuby.sugar :as sugar]
             [clojure.string :as str]
             [clojure.walk :as walk])
   (:import [org.jruby Ruby RubyFixnum RubyHash RubyFloat RubyArray
@@ -376,7 +375,6 @@ proc { |&f|
 (defmacro ruby [ & forms]
   (let [forms (map sugarify forms)]
     `(do ~@forms)))
-  ; (sugar/sugarify forms))
 
 (defmacro rb [obj]
   `(raw-eval ~(str/replace obj "." "::")))

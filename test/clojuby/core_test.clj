@@ -138,39 +138,3 @@
            => [1 2 3])
     (check (rb/ruby (. rb/Object instance-eval (& (fn [self] self))))
            => (rb/raw-eval "Object"))))
-  ; (testing "defines classes"
-  ;   (rb/ruby
-  ;    (defclass SomeClass
-  ;      (defn some-method [a b] (+ a b)))
-  ;    (.some_method (new SomeClass) 1 2))
-  ;   => 3)
-  ;
-  ; (testing "defines classes subclassing others"
-  ;   (rb/ruby
-  ;    (defclass SomeClass2 (rb/rb String))
-  ;    (.upcase (new SomeClass2 "foo")))
-  ;   => "FOO")
-  ;
-  ; (testing "defines classes subclassing others"
-  ;   (rb/ruby
-  ;    (defclass SomeClass3 (rb/rb String)
-  ;      (defn upcase [] (str (super) "-" self)))
-  ;    (.upcase (new SomeClass3 "bar")))
-  ;   => "BAR-bar")
-  ;
-  ; (testing "understands bindings"
-  ;   (rb/ruby (defclass SomeClass4 (defn x [] 10)))
-  ;   (rb/ruby (.instance-exec (new SomeClass4) 2 (fn [two] (+ two (.x self))))) => 12)
-  ;
-  ; (testing "plays nice with doto"
-  ;   (let [glob (atom 0)]
-  ;     (rb/ruby
-  ;      (doto (new (defclass DotoExample
-  ;                   (defn upd [a] (swap! glob + a))))
-  ;            (.upd 10)
-  ;            (.upd 2)))
-  ;     @glob => 12))
-  ;
-  ; (testing "plays nice with other macros"
-  ;   (rb/ruby
-  ;    (-> "some-string" .upcase .chop)) => "SOME-STRIN"))
