@@ -233,11 +233,18 @@ proc { |&f|
           bound (.bind unbound context self)]
       (.call bound context (normalize-args args) Block/NULL_BLOCK))))
 
-(defn create-class! [class-name parent]
-  (let [class (RubyClass/newClass runtime parent)]
-    (.setBaseName class class-name)
-    ; (.defineConstant ruby-object class-name class)
-    class))
+(defn create-class!
+  ([class-name parent] (create-class! class-name nil parent))
+  ([class-name ruby-class-name parent]
+   (let [class (send ruby-class "new" parent)]
+     (.setBaseName class class-name)
+     (when ruby-class-name
+       (.defineConstant ruby-object
+         (if (string? ruby-class-name)
+           ruby-class-name
+           class-name)
+         class))
+     class)))
 
 (defn new-method [class superclass method-name fun]
   (let [bindings (fn [self] {:self self
@@ -306,13 +313,6 @@ proc { |&f|
                            :extends (spec/spec ::includes-extends)
                            :method (spec/spec ::method-definition)))))
 
-#_
-(spec/conform ::new-class-syntax body)
-;
-;
-; (spec/conform ::extends-part '(< rb/Object))
-; (spec/conform ::extends-part '(< Object))
-
 (defn- get-ruby-class [[kind sym-name]]
   (if (= :ruby kind)
     `(raw-eval ~(-> sym-name name (str/replace #"\." "::")))
@@ -323,6 +323,7 @@ proc { |&f|
         {:keys [extends body]} comformed
         ruby-class (gensym "ruby-class-")]
     `(let [~ruby-class (create-class! ~(str class-name)
+                                      ~(some-> class-name meta (:ruby-class (str class-name)))
                                       ~(get-ruby-class (:superclass
                                                         extends
                                                         [:ruby 'rb/Object])))]
