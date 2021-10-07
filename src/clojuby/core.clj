@@ -1,13 +1,15 @@
 (ns clojuby.core
-  (:refer-clojure :exclude [eval])
-  (:require [clojuby.sugar :as sugar]
+  (:refer-clojure :exclude [eval send])
+  (:require [clojure.spec.alpha :as spec]
             [clojure.string :as str]
             [clojure.walk :as walk])
   (:import [org.jruby Ruby RubyFixnum RubyHash RubyFloat RubyArray
             RubySymbol RubyString RubyBoolean RubyNil RubyObject
-            RubyClass RubyProc]
+            RubyClass RubyProc RubyModule]
+           [org.jruby.ext.set RubySet]
            [org.jruby.javasupport JavaUtil]
-           [org.jruby.runtime Block Visibility Arity CallBlock BlockCallback]
+           [org.jruby.runtime Block Block$Type Visibility Arity Signature
+            CallBlock BlockCallback ThreadContext]
            [org.jruby.runtime.builtin IRubyObject]
            [org.jruby.internal.runtime.methods DynamicMethod CallConfiguration]))
 
@@ -17,8 +19,10 @@
   (.evalScriptlet runtime code))
 
 (def ^:private ruby-nil (raw-eval "nil"))
+(def ^:private ruby-set (raw-eval "require 'set'; Set"))
 (def ^:private ruby-class (raw-eval "Class"))
 (def ruby-object (raw-eval "Object"))
+(def ruby-module (raw-eval "Module"))
 (def ^:private ruby-main (raw-eval "self"))
 (def ^:private ruby-proc-wrapper
   (raw-eval "proc { |fn|
@@ -39,21 +43,76 @@
 (defprotocol RubyCljObject (clj->rb [this]))
 
 (defn- normalize-args [args]
-  (->> args (map clj->rb) (into-array RubyObject)))
+  (def args args)
+  (->> args (map clj->rb) (into-array IRubyObject)))
 
 (defn- normalize-block [args]
   (let [possible-block (last args)]
-    (if (fn? possible-block)
-      [(vec (butlast args)) (clj->rb possible-block)]
+    (if (instance? Block possible-block)
+      [(vec (butlast args)) possible-block]
       [args Block/NULL_BLOCK])))
 
-(defn public-send [method obj & args]
+(defn send [obj method & args]
   (let [[args block] (normalize-block args)]
     (-> obj
         clj->rb
         (.callMethod context method (normalize-args args) block)
         rb->clj)))
 
+(defrecord Callback [function]
+  BlockCallback
+  (^IRubyObject call [this
+                      ^ThreadContext context
+                      ^"[Lorg.jruby.runtime.builtin.IRubyObject;" args
+                      ^Block block-param]
+    (->> args
+         (map rb->clj)
+         (apply function)
+         clj->rb)))
+
+(defn & [function]
+  (CallBlock/newCallClosure ruby-main
+                            ruby-object
+                            (-> function arity-of-fn
+                                Arity/createArity Signature/from)
+                            (->Callback function)
+                            context))
+
+(def ^:private special-proc
+  (raw-eval "
+proc { |&f|
+  proc { |*args, &b| f.call(self, *args, &b) }
+}"))
+
+(defn && [function]
+  (let [block (& function)]
+    (.. special-proc
+        (call context block)
+        getBlock)))
+    ; #_
+    ; (CallBlock/newCallClosure ruby-main
+    ;                           ruby-object
+    ;                           (-> function arity-of-fn
+    ;                               Arity/createArity Signature/from)
+    ;                           (->Callback function)
+    ;                           context)))
+
+(defn proc [function]
+  (let [block (& function)]
+    (RubyProc/newProc runtime block Block$Type/PROC)))
+
+(defn send& [obj method & args]
+  (let [block (-> args last &)
+        args (butlast args)]
+    (-> obj
+        clj->rb
+        (.callMethod context method (normalize-args args) block)
+        rb->clj)))
+
+(prefer-method print-method java.util.Map org.jruby.runtime.builtin.IRubyObject)
+(prefer-method print-method java.util.RandomAccess org.jruby.runtime.builtin.IRubyObject)
+(prefer-method print-method java.util.Set org.jruby.runtime.builtin.IRubyObject)
+(prefer-method print-method java.util.List org.jruby.runtime.builtin.IRubyObject)
 
 (extend-protocol CljRubyObject
   RubyFixnum
@@ -99,20 +158,10 @@
   (rb->clj [this] this)
 
   Object
-  (rb->clj [this] this))
+  (rb->clj [this] this)
 
-(defn- generate-proc-from-fn [me]
-  (let [callback (proxy [BlockCallback] []
-                    (call [context args block]
-                      (let [args (cond-> (mapv rb->clj args)
-                                         (not= block Block/NULL_BLOCK) (conj block))]
-                        (clj->rb (apply me args)))))]
-
-    (CallBlock/newCallClosure ruby-main
-                              ruby-object
-                              (Arity/createArity (arity-of-fn me))
-                              callback
-                              context)))
+  nil
+  (rb->clj [this] nil))
 
 (extend-protocol RubyCljObject
   java.lang.Long
@@ -125,7 +174,7 @@
   (clj->rb [this] (RubyString/newString runtime this))
 
   clojure.lang.Keyword
-  (clj->rb [this] (RubySymbol/newSymbol runtime (name this)))
+  (clj->rb [this] (.fastNewSymbol runtime (name this)))
 
   java.lang.Boolean
   (clj->rb [this] (RubyBoolean/newBoolean runtime this))
@@ -145,11 +194,11 @@
                        (#(RubyArray/newArray runtime %))))
 
   java.util.Set
-  (clj->rb [this] (->> this
-                       (map clj->rb)
-                       (#(.callMethod (RubyArray/newArray runtime %)
-                                      context
-                                      "to_set"))))
+  (clj->rb [this]
+           (->> this
+                (map clj->rb)
+                (into-array IRubyObject)
+                (RubySet/create context ruby-set)))
 
   clojure.lang.Fn
   (clj->rb [me]
@@ -163,8 +212,7 @@
                               Block/NULL_BLOCK))
 
       (-> me meta :dont-convert?) me
-      :else (generate-proc-from-fn me)))
-
+      :else (proc me)))
 
   IRubyObject
   (clj->rb [this] this)
@@ -185,37 +233,106 @@
           bound (.bind unbound context self)]
       (.call bound context (normalize-args args) Block/NULL_BLOCK))))
 
+(defn create-class!
+  ([class-name parent] (create-class! class-name nil parent))
+  ([class-name ruby-class-name parent]
+   (let [class (send ruby-class "new" parent)]
+     (.setBaseName class class-name)
+     (when ruby-class-name
+       (.defineConstant ruby-object
+         (if (string? ruby-class-name)
+           ruby-class-name
+           class-name)
+         class))
+     class)))
+
+(defn new-method [class superclass method-name fun]
+  (let [bindings (fn [self] {:self self
+                             :super (define-super-fn superclass self method-name)})
+        call-fn (fn [context self class name args block]
+                  (clj->rb (apply fun
+                             (bindings self)
+                             (map rb->clj args))))
+        arity (arity-of-fn fun)
+        function-meta (meta fun)
+        visibility (cond
+                     (:private function-meta) Visibility/PRIVATE
+                     (:protected function-meta) Visibility/PROTECTED
+                     :else Visibility/PUBLIC)
+        method-gen (fn method-gen []
+                     (proxy [DynamicMethod] [class
+                                             visibility
+                                             CallConfiguration/BACKTRACE_AND_SCOPE
+                                             method-name]
+                       (call [^ThreadContext context, ^IRubyObject self,
+                              ^RubyModule class, ^String name,
+                              ^"[Lorg.jruby.runtime.builtin.IRubyObject;" args,
+                              ^Block block]
+                             (call-fn context self class name args block))
+                       (getArity [] (Arity/createArity arity))
+                       (dup [] (method-gen))))]
+    (method-gen)))
+
+(defn add-method! [^RubyClass ruby-class name function]
+  (let [superclass (.getSuperClass ruby-class)
+        method-name (str/replace-first name "self." "")
+        receiving-class (if (str/starts-with? name "self.")
+                          (.getMetaClass ruby-class)
+                          ruby-class)
+        method (new-method ruby-class superclass method-name function)]
+    (.addMethod receiving-class method-name method)))
+
 (defn new-class
   ([methods] (new-class ruby-object methods))
   ([superclass methods]
-   (let [class (public-send "new" ruby-class superclass)]
+   (let [class (send ruby-class "new" superclass)]
      (doseq [[name fun] methods
              :let [method-name (str/replace-first name "self." "")
                    receiving-class (if (str/starts-with? name "self.")
                                      (.getMetaClass class)
                                      class)
-                   bindings (fn [self] {:self self
-                                        :super (define-super-fn superclass self name)})
-                   call-fn (fn [context self class name args block]
-                             (clj->rb (apply fun
-                                        (bindings self)
-                                        (map rb->clj args))))
-
-                   arity (arity-of-fn fun)
-                   gen (fn gen [] (proxy [DynamicMethod] [class
-                                                          Visibility/PUBLIC
-                                                          CallConfiguration/BACKTRACE_AND_SCOPE
-                                                          name]
-                                    (call
-                                     ([context self class name]
-                                      (call-fn context self class name [] Block/NULL_BLOCK))
-                                     ([context self class name args block]
-                                      (call-fn context self class name args block)))
-                                    (getArity [] (Arity/createArity arity))
-                                    (dup []
-                                      (gen))))]]
-       (.addMethod receiving-class method-name (gen)))
+                   method (new-method class superclass method-name fun)]]
+       (.addMethod receiving-class method-name method))
      class)))
+
+(spec/def ::ruby-class (spec/and qualified-symbol? #(-> % namespace (= "rb"))))
+(spec/def ::rb-or-clj (spec/or :ruby ::ruby-class :clj symbol?))
+(spec/def ::extends-part (spec/cat :arrow '#{<} :superclass ::rb-or-clj))
+(spec/def ::includes-extends
+  (spec/alt :include (spec/cat :_ '#{include} :module ::rb-or-clj)
+            :extend (spec/cat :_ '#{extend} :module ::rb-or-clj)
+            :prepend (spec/cat :_ '#{prepend} :module ::rb-or-clj)))
+
+(spec/def ::method-definition (spec/cat :name simple-symbol?
+                                        :arglist vector?
+                                        :body (spec/* any?)))
+
+(spec/def ::new-class-syntax
+  (spec/cat :extends (spec/? ::extends-part)
+            :body (spec/* (spec/or
+                           :extends (spec/spec ::includes-extends)
+                           :method (spec/spec ::method-definition)))))
+
+(defn- get-ruby-class [[kind sym-name]]
+  (if (= :ruby kind)
+    `(raw-eval ~(-> sym-name name (str/replace #"\." "::")))
+    sym-name))
+
+(defmacro defclass [class-name & body]
+  (let [comformed (spec/conform ::new-class-syntax body)
+        {:keys [extends body]} comformed
+        ruby-class (gensym "ruby-class-")]
+    `(let [~ruby-class (create-class! ~(str class-name)
+                                      ~(some-> class-name meta (:ruby-class (str class-name)))
+                                      ~(get-ruby-class (:superclass
+                                                        extends
+                                                        [:ruby 'rb/Object])))]
+       ~@(for [[command params] body]
+           (case command
+             :method `(add-method! ~ruby-class
+                                   ~(-> params :name str (str/replace #"-" "_"))
+                                   (fn ~(:arglist params) ~@(:body params)))))
+       (def ~class-name ~ruby-class))))
 
 (defn set-variable [self name value]
   (.setInstanceVariable self name (clj->rb value)))
@@ -227,14 +344,44 @@
   (let [arguments (->> args (map clj->rb) (into-array RubyObject))]
     (.newInstance class context arguments Block/NULL_BLOCK)))
 
+(defprotocol SugarifiedSyntax
+  (sugarify [_]))
+
+(extend-protocol SugarifiedSyntax
+  clojure.lang.Symbol
+  (sugarify [this]
+    ; (case this
+    ;   rb/self `clojuby.core/self
+      (if (-> this namespace (= "rb"))
+        `(eval ~(-> this name (str/replace #"\." "::")))
+        this))
+
+  clojure.lang.PersistentList
+  (sugarify [this]
+    (let [[fst & rst] this]
+      (if (symbol? fst)
+        (case fst
+          . `(send ~(-> rst first sugarify)
+                   ~(-> rst second name (str/replace #"-" "_"))
+                   ~@(->> rst (drop  2) (map sugarify)))
+          & `(clojuby.core/& ~@(map sugarify rst))
+          && `(clojuby.core/&& ~@(map sugarify rst))
+          (if (-> fst resolve meta :macro)
+            this
+            (map sugarify this))))))
+
+  Object
+  (sugarify [this] `(clj->rb ~this)))
+
 (defmacro ruby [ & forms]
-  (sugar/sugarify forms))
+  (let [forms (map sugarify forms)]
+    `(do ~@forms)))
 
 (defmacro rb [obj]
   `(raw-eval ~(str/replace obj "." "::")))
 
 (defmethod print-method IRubyObject [this ^java.io.Writer w]
-  (.write w (public-send "inspect" this)))
+  (.write w (send this "inspect")))
 
 ; -- Helper macros for readers --
 (defn as-ruby-obj [form]
